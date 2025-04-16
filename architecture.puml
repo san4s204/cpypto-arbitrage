@@ -1,0 +1,134 @@
+@startuml Crypto Arbitrage Bot Architecture
+
+' Define styles and colors
+!define MICROSERVICE Folder
+!define DATABASE Database
+!define QUEUE Queue
+!define EXTERNAL_SYSTEM Rectangle
+
+skinparam componentStyle uml2
+skinparam backgroundColor white
+skinparam defaultTextAlignment center
+
+skinparam component {
+  BackgroundColor #FEFECE
+  BorderColor #000000
+  ArrowColor #000000
+}
+
+' Define components
+package "Crypto Arbitrage Bot System" {
+  package "Core Services" {
+    [MarketData] as marketData #LightBlue
+    [ArbEngine] as arbEngine #LightGreen
+    [Execution] as execution #LightYellow
+    [FundsRouter] as fundsRouter #LightPink
+    [TGManager] as tgManager #LightCyan
+  }
+  
+  package "Data Storage" {
+    database "Redis" as redis #Pink {
+      [Market Data Cache] as marketCache
+    }
+    
+    database "PostgreSQL" as postgres #LightGreen {
+      [Trade Logs] as tradeLogs
+      [PnL Records] as pnlRecords
+      [System Metrics] as systemMetrics
+    }
+  }
+  
+  package "Frontend" {
+    [Dashboard (FastAPI + React)] as dashboard #LightGray
+  }
+}
+
+' External systems
+cloud "Exchanges" as exchanges {
+  [CEX 1 (OKX)] as cex1
+  [CEX 2 (Bybit)] as cex2
+  [CEX 3 (HTX)] as cex3
+  [DEX 1 (Uniswap v3)] as dex1
+  [DEX 2 (1inch)] as dex2
+}
+
+cloud "Telegram API" as telegramAPI
+
+' Define relationships
+' MarketData relationships
+marketData --> marketCache : Stores real-time\nmarket data
+marketData <--> cex1 : WebSocket\nconnection
+marketData <--> cex2 : WebSocket\nconnection
+marketData <--> cex3 : WebSocket\nconnection
+marketData <--> dex1 : WebSocket\nconnection
+marketData <--> dex2 : WebSocket\nconnection
+
+' ArbEngine relationships
+arbEngine --> marketCache : Reads market data
+arbEngine --> tradeLogs : Logs arbitrage\nopportunities
+arbEngine --> execution : Sends trade\ninstructions
+arbEngine <--> tgManager : Confirmation\nworkflow
+
+' Execution relationships
+execution <--> cex1 : Places/cancels\norders
+execution <--> cex2 : Places/cancels\norders
+execution <--> cex3 : Places/cancels\norders
+execution <--> dex1 : Places/cancels\norders
+execution <--> dex2 : Places/cancels\norders
+execution --> tradeLogs : Logs order\nexecution
+execution --> pnlRecords : Records trade\nresults
+execution <--> fundsRouter : Requests fund\ntransfers
+
+' FundsRouter relationships
+fundsRouter <--> cex1 : Transfers\nfunds
+fundsRouter <--> cex2 : Transfers\nfunds
+fundsRouter <--> cex3 : Transfers\nfunds
+fundsRouter --> tradeLogs : Logs fund\ntransfers
+
+' TGManager relationships
+tgManager <--> telegramAPI : Sends/receives\nmessages
+tgManager --> tradeLogs : Logs user\ninteractions
+
+' Dashboard relationships
+dashboard --> marketCache : Reads market\ndata
+dashboard --> tradeLogs : Displays trade\nlogs
+dashboard --> pnlRecords : Shows PnL\ncharts
+dashboard --> systemMetrics : Monitors system\nhealth
+
+' Add notes
+note right of marketData
+  - Subscribes to WebSocket feeds
+  - Normalizes data format
+  - Updates Redis cache every 100ms
+  - Monitors connection health
+end note
+
+note right of arbEngine
+  - Uses Dijkstra's algorithm
+  - Calculates effective prices with fees
+  - Applies risk management filters
+  - Identifies arbitrage opportunities ≥0.3%
+end note
+
+note right of execution
+  - Handles order routing
+  - Monitors order status
+  - Implements retry logic
+  - Tracks positions
+end note
+
+note right of fundsRouter
+  - Manages cross-exchange transfers
+  - Calculates transfer fees
+  - Monitors balances
+  - Handles rebalancing
+end note
+
+note right of tgManager
+  - Processes trade confirmations
+  - Sends trade notifications
+  - Provides balance information
+  - Secures admin access
+end note
+
+@enduml

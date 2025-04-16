@@ -1,0 +1,15 @@
+asyncio==3.4.3
+ccxt==4.1.13
+cryptography==41.0.5
+fastapi==0.104.1
+networkx==3.2.1
+numpy==1.26.1
+pandas==2.1.2
+python-dotenv==1.0.0
+python-telegram-bot==20.6
+redis==5.0.1
+sqlalchemy==2.0.23
+sqlalchemy[asyncio]==2.0.23
+asyncpg==0.28.0
+uvicorn==0.23.2
+websockets==12.0
