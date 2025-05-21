@@ -14,3 +14,8 @@ asyncpg
 uvicorn
 websockets
 requests 
+ccxtpro
+asyncpg
+psycopg2-binary
+aiogram
+loguru
