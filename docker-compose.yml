@@ -1,151 +1,24 @@
-version: '3.8'
-
+version: "3.9"
 services:
-  # Redis service for market data caching
-  redis:
-    image: redis:alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
-
-  # PostgreSQL service for data storage
-  postgres:
-    image: postgres:14-alpine
+  db:
+    image: postgres:16
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: crypto_arb_bot
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 3s
-      retries: 3
+      POSTGRES_USER: arb
+      POSTGRES_PASSWORD: arbpass
+      POSTGRES_DB: arb
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
 
-  # Market Data microservice
-  market_data:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m market_data.main
+  app:
+    build: .
     environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-    restart: unless-stopped
-
-  # Arbitrage Engine microservice
-  arb_engine:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m arb_engine.main
-    environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-      - market_data
-    restart: unless-stopped
-
-  # Execution microservice
-  execution:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m execution.main
-    environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-      - arb_engine
-    restart: unless-stopped
-
-  # Funds Router microservice
-  funds_router:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m funds_router.main
-    environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-      - execution
-    restart: unless-stopped
-
-  # Telegram Manager microservice
-  tg_manager:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m tg_manager.main
-    environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-      - arb_engine
-      - execution
-    restart: unless-stopped
-
-  # Dashboard (FastAPI backend + React frontend)
-  dashboard:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    volumes:
-      - ./:/app
-    working_dir: /app
-    command: python -m dashboard.main
-    ports:
-      - "8000:8000"
-    environment:
-      - REDIS_HOST=redis
-      - POSTGRES_HOST=postgres
-    depends_on:
-      - redis
-      - postgres
-      - market_data
-      - arb_engine
-      - execution
-      - funds_router
-    restart: unless-stopped
+      - PYTHONPATH=/code/src
+      - DB_URL=postgresql+psycopg2://arb:arbpass@db:5432/arb
+    env_file:
+      - .env                  # ваши API-ключи (не коммитим!)
+    volumes: ["./src:/code/src"]
+    depends_on: [db]
+    command: ["sleep", "infinity"]  # во время dev; позже заменим на supervisord
 
 volumes:
-  redis_data:
-  postgres_data:
+  pgdata:
