@@ -52,7 +52,7 @@ make notebook       # запуск Jupyter c шаблоном EDA
 
 | #  | Скрипт / Модуль           | Статус | Заметки                                                        |
 | -- | ------------------------- | ------ | -------------------------------------------------------------- |
-| 0  | **docker‑compose**        | ✔      | Postgres 15 · Redis 7 + сервис `app`                           |
+| 0  | **docker‑compose**        | ✔      | Postgres 15 ·                                                  |
 | 1  | `fetch_markets.py`        | ✔      | Пересечение спотовых пар USDT (4 биржи) → `all_pairs_raw.xlsx` |
 | 2A | `decorate_pairs.py`       | ✔      | 24 ч объём & depth‑bid‑1 на биржу → `all_pairs_enriched.xlsx`  |
 | 2B | `filter_pairs.py`         | ✔      | фильтр ликвидности по правилам → `pairs_top.xlsx`              |
@@ -83,13 +83,13 @@ make notebook       # запуск Jupyter c шаблоном EDA
 
 ### ✅ Сделано
 
-- Докеризированы Postgres + Redis, env‑config, Poetry/venv
+- Докеризирован Postgres
 - Полный оффлайн ETL по 4 биржам
 - Шаблон EDA‑ноутбука и ранжирование пар
 
 ### 🔜 Следующий спринт
 
-- …
+- 20.07.2025
 
 ### 🗓️ Будущее
 
@@ -97,25 +97,6 @@ make notebook       # запуск Jupyter c шаблоном EDA
 
 ---
 
-## ▶️ Быстрый старт
-
-```bash
-# 1) клон и переменные окружения
-cp .env.example .env   # задайте DB URL, API‑ключи
-
-# 2) поднимаем стек
-make compose-up        # postgres + redis
-
-# 3) начальная выгрузка (80 д, 30 м)
-make etl-full          # обёртка fetch→enrich→bulk→etl
-
-# 4) исследуем
-make jupyter           # открывает notebooks/eda.ipynb
-```
-
-> **Примечание для пользователей из РФ:** API OKX / Bitget / MEXC могут быть заблокированы. Настройте `GLOBAL_PROXY` в `.env` или работайте через VPN / Cloudflare WARP.
-
----
 
 ## 🧰 Технологический стек
 
@@ -126,14 +107,5 @@ make jupyter           # открывает notebooks/eda.ipynb
 
 ---
 
-## 🤝 Контрибьютинг
 
-Пулл‑реквесты и ишью приветствуются!\
-См. `CONTRIBUTING.md` для стиля кода и git‑флоу.
-
----
-
-## 📜 Лицензия
-
-MIT © 2025 Команда «Крипто‑бот»
 
