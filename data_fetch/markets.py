@@ -1,23 +1,50 @@
-import ccxt
-import pandas as pd
-from src.config import PAIRS_CSV
-from src.utils.logging import log
+# src/data_fetch/fetch_markets.py
+import pathlib, ccxt, pandas as pd
+from functools import reduce
 
-def fetch_pairs() -> pd.DataFrame:
-    bybit = ccxt.bybit()
-    okx   = ccxt.okx()
-    bybit.load_markets()
-    okx.load_markets()
+EXCHANGES = {
+    "bybit":   ccxt.bybit,
+    "okx":     ccxt.okx,
+    "mexc":    ccxt.mexc,
+    "bitget":  ccxt.bitget
+}
 
-    usdt_bybit = {s for s,m in bybit.markets.items() if m['quote'] == 'USDT' and m['spot']}
-    usdt_okx   = {s.replace('-', '/') for s,m in okx.markets.items() if m['quote'] == 'USDT' and m['spot']}
+def get_pairs(exchange_id: str) -> pd.DataFrame:
+    """Вытащить все spot-пары c котировкой USDT для заданной биржи."""
+    ex = EXCHANGES[exchange_id]()
+    ex.load_markets()
+    rows = []
+    for m in ex.markets.values():
+        if not m["spot"] or m["quote"] != "USDT":
+            continue
+        rows.append(
+            {
+                "symbol":     m["symbol"],          # BTC/USDT
+                "base":       m["base"],
+                "quote":      m["quote"],
+                "exchange":   exchange_id,
+                "listed_ts":  m.get("timestamp"),
+                "tick_size":  m["precision"].get("price"),
+                "min_qty":    m["limits"]["amount"]["min"],
+            }
+        )
+    return pd.DataFrame(rows)
 
-    shared = usdt_bybit & usdt_okx
-    df = pd.DataFrame(sorted(shared), columns=['symbol'])
-    df[['base','quote']] = df['symbol'].str.split('/', expand=True)
-    df.to_csv(PAIRS_CSV, index=False)
-    log.info(f"Saved {len(df)} common USDT pairs to {PAIRS_CSV}")
-    return df
+def main():
+    # ─ 1. собираем DataFrame для каждой биржи
+    dfs = {eid: get_pairs(eid) for eid in EXCHANGES}
+
+    # ─ 2. ищем символы, общие для всех бирж  (inner-merge по 'symbol')
+    inter = reduce(
+        lambda left, right: pd.merge(
+            left, right, on="symbol", suffixes=("", f"_{right.exchange.iloc[0]}")
+        ),
+        dfs.values(),
+    )
+
+    pathlib.Path("data").mkdir(exist_ok=True)
+    inter.to_excel("data/all_pairs_raw.xlsx", index=False)
+    print(f"✓ saved {len(inter)} common USDT pairs across Bybit, OKX, Binance, MEXC")
 
 if __name__ == "__main__":
-    fetch_pairs()
+    main()
