@@ -52,7 +52,7 @@ make notebook       # запуск Jupyter c шаблоном EDA
 
 | #  | Скрипт / Модуль           | Статус | Заметки                                                        |
 | -- | ------------------------- | ------ | -------------------------------------------------------------- |
-| 0  | **docker‑compose**        | ✔      | Postgres 15 · Redis 7 + сервис `app`                           |
+| 0  | **docker‑compose**        | ✔      | Postgres 15 ·                                                  |
 | 1  | `fetch_markets.py`        | ✔      | Пересечение спотовых пар USDT (4 биржи) → `all_pairs_raw.xlsx` |
 | 2A | `decorate_pairs.py`       | ✔      | 24 ч объём & depth‑bid‑1 на биржу → `all_pairs_enriched.xlsx`  |
 | 2B | `filter_pairs.py`         | ✔      | фильтр ликвидности по правилам → `pairs_top.xlsx`              |
@@ -83,7 +83,7 @@ make notebook       # запуск Jupyter c шаблоном EDA
 
 ### ✅ Сделано
 
-- Докеризированы Postgres + Redis, env‑config, Poetry/venv
+- Докеризирован Postgres
 - Полный оффлайн ETL по 4 биржам
 - Шаблон EDA‑ноутбука и ранжирование пар
 
