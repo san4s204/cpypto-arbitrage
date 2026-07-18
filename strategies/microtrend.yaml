@@ -1,0 +1,14 @@
+id: micro_trend
+type: micro_trend
+enabled: true
+symbols: [BTC/USDT, ETH/USDT]
+exchanges: [bybit, okx]
+parameters:
+  fast_window: 8
+  slow_window: 30
+  entry_bps: 6
+  exit_bps: 0
+  stop_loss_bps: 35
+  take_profit_bps: 70
+  max_hold_seconds: 900
+

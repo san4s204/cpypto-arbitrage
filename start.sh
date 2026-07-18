@@ -1,12 +1,9 @@
 #!/bin/bash
 
-# Start script for Crypto Arbitrage Bot
-# This script helps with starting the bot in development mode
+set -euo pipefail
 
-# Check if Docker and Docker Compose are installed
-if ! command -v docker &> /dev/null || ! command -v docker-compose &> /dev/null; then
-    echo "Docker and/or Docker Compose not found. Please install them first."
-    echo "You can run ./deploy.sh to install them automatically."
+if ! command -v docker &> /dev/null || ! docker compose version &> /dev/null; then
+    echo "Docker with the Compose plugin is required."
     exit 1
 fi
 
@@ -24,9 +21,5 @@ if [ ! -f .env ]; then
     fi
 fi
 
-# Start containers in development mode
-echo "Starting Crypto Arbitrage Bot in development mode..."
-docker-compose up
-
-# This script will keep running until Ctrl+C is pressed
-# The logs will be displayed in the terminal
+echo "Starting Strategy Lab in paper mode..."
+docker compose up --build

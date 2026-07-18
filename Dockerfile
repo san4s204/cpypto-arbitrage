@@ -1,15 +1,16 @@
-# Dockerfile (корень репо)
-FROM python:3.11-slim
+FROM python:3.12-slim
 
-# 1. рабочая папка
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
 WORKDIR /app
-
-# 2. зависимости
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# 3. код проекта
 COPY . .
+RUN useradd --create-home --uid 10001 appuser \
+    && mkdir -p /app/runtime \
+    && chown -R appuser:appuser /app
 
-# 4. стартовый модуль
-CMD ["python", "-m", "realtime.ws_listener"]
+USER appuser
+
+CMD ["python", "-m", "app.main"]

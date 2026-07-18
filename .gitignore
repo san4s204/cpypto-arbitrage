@@ -2,6 +2,7 @@
 .env
 .env.*
 !.env.example
+!.env.sample
 *.pem
 *.key
 *.p12
@@ -64,6 +65,7 @@ datasets/
 storage/
 artifacts/
 outputs/
+runtime/
 reports/generated/
 analysis/output/
 *.parquet
