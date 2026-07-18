@@ -16,6 +16,9 @@ test:
 run:
 	python -m app.main
 
+select-universe:
+	python -m app.research.select_universe
+
 compose-up:
 	docker compose up --build
 

@@ -1,7 +1,8 @@
 id: micro_trend
 type: micro_trend
 enabled: true
-symbols: [BTC/USDT, ETH/USDT]
+# The active universe is controlled centrally by SYMBOLS in .env.
+symbols: []
 exchanges: [bybit, okx]
 parameters:
   fast_window: 8
@@ -11,4 +12,3 @@ parameters:
   stop_loss_bps: 35
   take_profit_bps: 70
   max_hold_seconds: 900
-

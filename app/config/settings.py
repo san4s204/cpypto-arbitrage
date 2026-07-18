@@ -48,6 +48,10 @@ class AppSettings:
             raise ValueError("MARKET_DATA_MODE must be ws or rest")
         if self.initial_equity <= 0:
             raise ValueError("PAPER_INITIAL_EQUITY must be positive")
+        if self.paper_slippage_bps < 0:
+            raise ValueError("PAPER_SLIPPAGE_BPS cannot be negative")
+        if any(value < 0 for value in self.paper_fee_bps.values()):
+            raise ValueError("PAPER_FEE_BPS values cannot be negative")
         if self.stats_interval_seconds <= 0:
             raise ValueError("STATS_INTERVAL_SECONDS must be positive")
 
