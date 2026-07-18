@@ -13,7 +13,7 @@ exchs = {
     "bybit":   ccxt.bybit(  {"enableRateLimit": True}),
     "okx":     ccxt.okx(    {"enableRateLimit": True}),
     "mexc":    ccxt.mexc(   {"enableRateLimit": True}),
-    "bitget":  ccxt.bitget(  {"enableRateLimit": True}),
+    "bitget":     ccxt.bitget(    {"enableRateLimit": True}),
 }
 
 # ──────────── helpers
@@ -25,12 +25,17 @@ def ticker_safe(ex, sym):
         return None
 
 def depth_safe(ex, sym):
+    """
+    Возвращает bid-depth = price * qty для лучшей заявки.
+    Для htx limit должен быть None/5/10/20/150 → берём 5.
+    """
+    limit = 1      # ⬅️ ключевая строка
     try:
-        ob = ex.fetch_order_book(sym, 1)
+        ob = ex.fetch_order_book(sym, limit)
         if not ob["bids"]:
             return 0.0
-        p, q = map(float, ob["bids"][0][:2])
-        return p * q
+        price, qty = map(float, ob["bids"][0][:2])
+        return price * qty
     except Exception as e:
         print(f"[warn] depth  {ex.id} {sym}: {e}")
         return 0.0
@@ -74,7 +79,7 @@ def main():
     depth_cols = [f"depth_{ex}" for ex in exchs]
 
     df["volume_24h"] = df[vol_cols].min(axis=1)
-    df["depth"]      = df[depth_cols].mean(axis=1)
+    df["depth"] = df[depth_cols].mean(axis=1)
 
     df["vol_src"]   = df[vol_cols].idxmin(axis=1).str.replace("volume_", "")
     df["depth_src"] = df[depth_cols].idxmin(axis=1).str.replace("depth_", "")

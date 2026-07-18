@@ -1,24 +1,45 @@
 version: "3.9"
+
 services:
+  # ─────────── База данных ───────────
   db:
     image: postgres:16
+    restart: unless-stopped
     environment:
       POSTGRES_USER: arb
       POSTGRES_PASSWORD: arbpass
       POSTGRES_DB: arb
-    ports: ["5432:5432"]
-    volumes: ["pgdata:/var/lib/postgresql/data"]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "1488:5432"
+    networks: [arbnet]
 
-  app:
-    build: .
-    environment:
-      - PYTHONPATH=/code/src
-      - DB_URL=postgresql+psycopg2://arb:arbpass@db:5432/arb
-    env_file:
-      - .env                  # ваши API-ключи (не коммитим!)
-    volumes: ["./src:/code/src"]
-    depends_on: [db]
-    command: ["sleep", "infinity"]  # во время dev; позже заменим на supervisord
+  # ─────────── Redis (pub/sub + кэш) ───────────
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: redis-server --appendonly yes          # AOF для сохранности данных
+    ports:
+      - "6379:6379"                                 # при желании убрать наружу → удалите эту строку
+    volumes:
+      - redisdata:/data
+    networks: [arbnet]
+
+  # ─────────── (пример) WS-воркер ───────────
+  
+  ws_listener:
+    build: .                # использует Dockerfile выше
+    working_dir: /app       # на всякий случай
+    command: python -m realtime.ws_listener
+    env_file: .env
+    depends_on: [redis, db]
+    networks: [arbnet]
 
 volumes:
   pgdata:
+  redisdata:
+
+networks:
+  arbnet:
+    driver: bridge

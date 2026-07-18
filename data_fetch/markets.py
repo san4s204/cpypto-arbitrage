@@ -6,7 +6,7 @@ EXCHANGES = {
     "bybit":   ccxt.bybit,
     "okx":     ccxt.okx,
     "mexc":    ccxt.mexc,
-    "bitget":  ccxt.bitget
+    "bitget":     ccxt.bitget
 }
 
 def get_pairs(exchange_id: str) -> pd.DataFrame:

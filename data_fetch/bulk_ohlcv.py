@@ -1,6 +1,6 @@
 """
 Скачивает OHLCV (spot) за N-дней для всех пар из data/pairs_top.xlsx
-на Bybit, OKX, Bitget и MEXC, пишет в таблицу ohlcv_raw.
+пишет в таблицу ohlcv_raw.
 
 Примеры
     python -m src.data_fetch.bulk_ohlcv           # 30-min, 80 дней
