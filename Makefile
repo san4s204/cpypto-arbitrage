@@ -19,6 +19,9 @@ run:
 select-universe:
 	python -m app.research.select_universe
 
+record-live:
+	python -m app.research.record_live
+
 compose-up:
 	docker compose up --build
 
