@@ -48,6 +48,8 @@ class AppSettings:
             raise ValueError("MARKET_DATA_MODE must be ws or rest")
         if self.initial_equity <= 0:
             raise ValueError("PAPER_INITIAL_EQUITY must be positive")
+        if self.stats_interval_seconds <= 0:
+            raise ValueError("STATS_INTERVAL_SECONDS must be positive")
 
     @classmethod
     def from_env(cls, project_root: Path | None = None) -> AppSettings:
@@ -76,4 +78,3 @@ class AppSettings:
             telegram_chat_ids=_csv("TELEGRAM_CHAT_IDS", ""),
             stats_interval_seconds=int(os.getenv("STATS_INTERVAL_SECONDS", "60")),
         )
-
