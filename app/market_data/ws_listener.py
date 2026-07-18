@@ -8,6 +8,7 @@ from app.domain.models import Quote, utc_now
 from app.market_data.normalizer import normalize_order_book
 
 logger = logging.getLogger(__name__)
+TOP_OF_BOOK_LIMIT = 1
 
 
 class CcxtProMarketDataFeed:
@@ -28,7 +29,10 @@ class CcxtProMarketDataFeed:
     async def _watch(self, client, exchange_id: str, symbol: str) -> None:
         while True:
             try:
-                order_book = await client.watch_order_book(symbol, limit=5)
+                order_book = await client.watch_order_book(
+                    symbol,
+                    limit=TOP_OF_BOOK_LIMIT,
+                )
                 quote = normalize_order_book(
                     exchange=exchange_id,
                     symbol=symbol,
