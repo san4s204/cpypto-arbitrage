@@ -1,0 +1,86 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+credentials*.json
+secrets*.json
+secrets/
+
+# Python environments and caches
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+*$py.class
+.python-version
+
+# Packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+wheels/
+
+# Tests, coverage and linters
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.nox/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# IDEs and editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Logs and runtime files
+logs/
+*.log
+*.pid
+*.pid.lock
+
+# Local databases and broker state
+*.db
+*.sqlite
+*.sqlite3
+dump.rdb
+appendonly.aof
+
+# Downloaded market data and generated artifacts
+data/
+datasets/
+storage/
+artifacts/
+outputs/
+reports/generated/
+analysis/output/
+*.parquet
+*.feather
+*.arrow
+*.csv
+*.tsv
+*.pkl
+*.pickle
+*.joblib
+
+# Local Docker overrides and mounted volumes
+docker-compose.override.yml
+postgres_data/
+redis_data/
+
+# OS files
+.DS_Store
+Thumbs.db
+Desktop.ini
