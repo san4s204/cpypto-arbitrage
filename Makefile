@@ -25,6 +25,9 @@ record-live:
 replay-microtrend:
 	python -m app.research.replay_microtrend
 
+replay-impulse:
+	python -m app.research.replay_confirmed_impulse
+
 compose-up:
 	docker compose up --build
 

@@ -12,6 +12,11 @@ def quote(
     ask: float,
     symbol: str = "BTC/USDT",
     seconds: float = 0,
+    bid_size: float | None = None,
+    ask_size: float | None = None,
+    buy_volume: float | None = None,
+    sell_volume: float | None = None,
+    trade_flow_window_seconds: float | None = None,
 ) -> Quote:
     timestamp = BASE_TIME + timedelta(seconds=seconds)
     return Quote(
@@ -21,6 +26,11 @@ def quote(
         ask=ask,
         occurred_at=timestamp,
         received_at=timestamp,
+        bid_size=bid_size,
+        ask_size=ask_size,
+        buy_volume=buy_volume,
+        sell_volume=sell_volume,
+        trade_flow_window_seconds=trade_flow_window_seconds,
     )
 
 
@@ -49,4 +59,3 @@ def closed_trade(
         closed_at=opened_at + timedelta(seconds=hold_seconds),
         close_reason="test",
     )
-

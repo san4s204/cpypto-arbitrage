@@ -35,12 +35,26 @@ class Quote:
     ask: float
     occurred_at: datetime
     received_at: datetime = field(default_factory=utc_now)
+    bid_size: float | None = None
+    ask_size: float | None = None
+    buy_volume: float | None = None
+    sell_volume: float | None = None
+    trade_flow_window_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if self.bid <= 0 or self.ask <= 0:
             raise ValueError("bid and ask must be positive")
         if self.ask < self.bid:
             raise ValueError("ask must be greater than or equal to bid")
+        for name in ("bid_size", "ask_size", "buy_volume", "sell_volume"):
+            value = getattr(self, name)
+            if value is not None and value < 0:
+                raise ValueError(f"{name} cannot be negative")
+        if (
+            self.trade_flow_window_seconds is not None
+            and self.trade_flow_window_seconds <= 0
+        ):
+            raise ValueError("trade_flow_window_seconds must be positive")
         if self.occurred_at.tzinfo is None or self.received_at.tzinfo is None:
             raise ValueError("quote timestamps must be timezone-aware")
 
@@ -51,6 +65,20 @@ class Quote:
     @property
     def spread_bps(self) -> float:
         return (self.ask - self.bid) / self.mid * 10_000
+
+    @property
+    def book_imbalance(self) -> float | None:
+        if self.bid_size is None or self.ask_size is None:
+            return None
+        total = self.bid_size + self.ask_size
+        return (self.bid_size - self.ask_size) / total if total > 0 else None
+
+    @property
+    def trade_flow_imbalance(self) -> float | None:
+        if self.buy_volume is None or self.sell_volume is None:
+            return None
+        total = self.buy_volume + self.sell_volume
+        return (self.buy_volume - self.sell_volume) / total if total > 0 else None
 
     def age_seconds(self, now: datetime | None = None) -> float:
         current = now or utc_now()
@@ -175,4 +203,3 @@ class ClosedTrade:
         if self.entry_notional == 0:
             return 0.0
         return self.net_pnl / self.entry_notional
-

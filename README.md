@@ -23,6 +23,8 @@ flowchart TD
 
 - `latency_momentum` — ищет запаздывающую реакцию одной биржи на движение другой;
 - `micro_trend` — тестирует краткосрочный импульс по быстрым и медленным средним;
+- `confirmed_impulse` — требует синхронного движения двух бирж, перевеса bid-объёма
+  и агрессивных покупок выше полной стоимости сделки;
 - `spread_reaction` — новая оболочка для старой межбиржевой идеи с атомарным открытием
   и закрытием двух ног в Paper Trading.
 
@@ -32,6 +34,7 @@ flowchart TD
 ## Что уже реализовано
 
 - публичные WebSocket-котировки через `ccxt.pro` и REST fallback;
+- размеры top-of-book и rolling buy/sell flow публичных сделок;
 - единый нормализованный формат bid/ask с контролем времени котировки;
 - загрузчик стратегий из YAML;
 - консервативный и агрессивный риск-профили;
@@ -118,7 +121,7 @@ OHLCV используется только как дешёвый предвар
 ```powershell
 .venv\Scripts\python -m app.research.record_live `
   --hours 10 `
-  --top 20 `
+  --symbols LIT/USDT,ONDO/USDT,TRUMP/USDT,INJ/USDT,GRAM/USDT,VIRTUAL/USDT `
   --sample-seconds 5
 ```
 
@@ -139,6 +142,8 @@ Spread-рейтинг симулирует парный вход и выход �
 
 Если `runtime/universe_candidates.csv` отсутствует, recorder использует `SYMBOLS` из
 `.env`. Пары можно задать явно через `--symbols TRUMP/USDT,GRAM/USDT`.
+Новые сессии также сохраняют размеры лучших bid/ask и rolling buy/sell объём публичных
+сделок за 60 секунд. Старая база мигрируется автоматически и остаётся читаемой.
 
 ## Replay micro-trend по записанным bid/ask
 
@@ -163,6 +168,25 @@ Recorder показывает волатильность, но ещё не до�
 конфиг стоит только после положительной проверки на следующем независимом периоде.
 Текущая MA-версия `micro_trend` выключена в YAML по умолчанию, потому что первый replay
 на синхронных bid/ask не покрыл торговые издержки.
+
+## Cost-aware confirmed impulse
+
+Новая гипотеза входит только в long, когда движение подтверждено Bybit и OKX, расхождение
+между биржами невелико, а стакан и поток публичных сделок показывают перевес покупателей.
+Минимальный импульс не может быть ниже суммы round-trip cost и safety margin. Стратегия
+выключена по умолчанию до replay новой feature-rich сессии.
+
+После записи запусти:
+
+```powershell
+.venv\Scripts\python -m app.research.replay_confirmed_impulse `
+  --symbols LIT/USDT,ONDO/USDT,TRUMP/USDT,INJ/USDT,GRAM/USDT,VIRTUAL/USDT
+```
+
+Grid проверяет lookback `30/60/120s`, подтверждённый ход `30/40/60 bps`, два порога
+book imbalance и два порога trade-flow imbalance. Replay использует фактические bid/ask,
+комиссии, slippage, stop/take, cooldown и контроль свежести обеих бирж. Старые сессии без
+объёмных признаков отклоняются явно, а не заполняются искусственными значениями.
 
 ## Запуск через Docker
 

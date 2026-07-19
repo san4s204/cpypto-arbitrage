@@ -1,3 +1,4 @@
+import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -14,6 +15,7 @@ def stored_quote(
     symbol: str = "TEST/USDT",
     mid: float,
     seconds: float = 0,
+    with_features: bool = False,
 ) -> StoredQuote:
     timestamp = BASE_TIME + timedelta(seconds=seconds)
     return StoredQuote(
@@ -23,6 +25,11 @@ def stored_quote(
         ask=mid + 0.01,
         occurred_at=timestamp,
         received_at=timestamp,
+        bid_size=80 if with_features else None,
+        ask_size=20 if with_features else None,
+        buy_volume=800 if with_features else None,
+        sell_volume=200 if with_features else None,
+        trade_flow_window_seconds=60 if with_features else None,
     )
 
 
@@ -49,7 +56,7 @@ def test_live_store_persists_a_synchronized_recording_session(tmp_path: Path) ->
         session_id="session",
         sampled_at=BASE_TIME,
         quotes=[
-            stored_quote("bybit", mid=100),
+            stored_quote("bybit", mid=100, with_features=True),
             stored_quote("okx", mid=101),
         ],
     )
@@ -69,9 +76,50 @@ def test_live_store_persists_a_synchronized_recording_session(tmp_path: Path) ->
     assert len(values) == 1
     assert values[0][0] == "TEST/USDT"
     assert set(values[0][1][0].quotes) == {"bybit", "okx"}
+    assert values[0][1][0].quotes["bybit"].bid_size == 80
+    assert values[0][1][0].quotes["bybit"].buy_volume == 800
 
     with LiveQuoteStore(tmp_path / "live.sqlite3", read_only=True) as reader:
         assert [item.session_id for item in reader.list_sessions()] == ["session"]
+
+
+def test_live_store_migrates_the_previous_quote_schema(tmp_path: Path) -> None:
+    path = tmp_path / "old.sqlite3"
+    connection = sqlite3.connect(path)
+    connection.execute(
+        """
+        CREATE TABLE live_quotes (
+            session_id TEXT NOT NULL,
+            sampled_at_ms INTEGER NOT NULL,
+            symbol TEXT NOT NULL,
+            exchange TEXT NOT NULL,
+            bid REAL NOT NULL,
+            ask REAL NOT NULL,
+            occurred_at_ms INTEGER NOT NULL,
+            received_at_ms INTEGER NOT NULL,
+            PRIMARY KEY (session_id, sampled_at_ms, symbol, exchange)
+        )
+        """
+    )
+    connection.commit()
+    connection.close()
+
+    with LiveQuoteStore(path):
+        pass
+
+    connection = sqlite3.connect(path)
+    columns = {
+        str(row[1]) for row in connection.execute("PRAGMA table_info(live_quotes)")
+    }
+    connection.close()
+
+    assert {
+        "bid_size",
+        "ask_size",
+        "buy_volume",
+        "sell_volume",
+        "trade_flow_window_seconds",
+    } <= columns
 
 
 def test_live_report_simulates_profitable_spread_convergence() -> None:

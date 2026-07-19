@@ -1,5 +1,8 @@
+import pytest
+
 from app.domain.models import SignalAction, StrategyContext
 from app.strategies.base import StrategyConfig
+from app.strategies.confirmed_impulse import ConfirmedImpulseStrategy
 from app.strategies.micro_trend import MicroTrendStrategy
 from app.strategies.spread_reaction import SpreadReactionStrategy
 from tests.helpers import quote
@@ -75,3 +78,49 @@ def test_spread_reaction_emits_atomic_pair() -> None:
         SignalAction.ENTER_SHORT,
     }
     assert len({signal.metadata["group_id"] for signal in signals}) == 1
+
+
+def test_confirmed_impulse_requires_both_exchanges_and_feature_confirmation() -> None:
+    strategy = ConfirmedImpulseStrategy(
+        StrategyConfig(
+            strategy_id="confirmed",
+            symbols=("BTC/USDT",),
+            exchanges=("bybit", "okx"),
+            parameters={
+                "lookback_seconds": 60,
+                "round_trip_cost_bps": 24,
+                "safety_margin_bps": 6,
+                "min_confirmed_move_bps": 30,
+                "max_exchange_divergence_bps": 10,
+                "min_book_imbalance": 0.2,
+                "min_trade_flow_imbalance": 0.2,
+            },
+        )
+    )
+
+    def feature_quote(exchange: str, mid: float, seconds: int):
+        return quote(
+            exchange,
+            bid=mid - 0.01,
+            ask=mid + 0.01,
+            seconds=seconds,
+            bid_size=80,
+            ask_size=20,
+            buy_volume=800,
+            sell_volume=200,
+            trade_flow_window_seconds=60,
+        )
+
+    assert strategy.on_quote(feature_quote("bybit", 100, 0), StrategyContext()) == []
+    assert strategy.on_quote(feature_quote("okx", 100, 0), StrategyContext()) == []
+    assert strategy.on_quote(feature_quote("bybit", 100.4, 60), StrategyContext()) == []
+
+    signals = strategy.on_quote(
+        feature_quote("okx", 100.4, 60),
+        StrategyContext(),
+    )
+
+    assert len(signals) == 1
+    assert signals[0].action is SignalAction.ENTER_LONG
+    assert signals[0].metadata["confirmed_move_bps"] == pytest.approx(40)
+    assert signals[0].metadata["round_trip_cost_bps"] == 24

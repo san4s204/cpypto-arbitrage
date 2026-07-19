@@ -96,6 +96,11 @@ def _record_synchronized_frames(
                     ask=quote.ask,
                     occurred_at=quote.occurred_at,
                     received_at=quote.received_at,
+                    bid_size=quote.bid_size,
+                    ask_size=quote.ask_size,
+                    buy_volume=quote.buy_volume,
+                    sell_volume=quote.sell_volume,
+                    trade_flow_window_seconds=quote.trade_flow_window_seconds,
                 )
                 for quote in complete_quotes
             ],
@@ -193,7 +198,11 @@ async def run(args: argparse.Namespace) -> None:
         symbols=symbols,
         exchanges=exchanges,
     )
-    feed = CcxtProMarketDataFeed(exchanges=exchanges, symbols=symbols)
+    feed = CcxtProMarketDataFeed(
+        exchanges=exchanges,
+        symbols=symbols,
+        trade_flow_window_seconds=args.trade_flow_window_seconds,
+    )
     latest: dict[tuple[str, str], Quote] = {}
     counters = RecorderCounters()
     consumer = asyncio.create_task(_consume_quotes(feed, latest, counters))
@@ -242,15 +251,22 @@ async def run(args: argparse.Namespace) -> None:
                     if expected_frames
                     else 0.0
                 )
+                feature_streams = sum(
+                    quote.book_imbalance is not None
+                    and quote.trade_flow_imbalance is not None
+                    for quote in latest.values()
+                )
                 logger.info(
                     "recording heartbeat: elapsed=%.1fh quotes=%d attempts=%d "
-                    "frames=%d coverage=%.1f%% streams=%d/%d",
+                    "frames=%d coverage=%.1f%% streams=%d/%d features=%d/%d",
                     (now - started) / 3_600,
                     counters.quote_updates,
                     counters.attempted_samples,
                     counters.recorded_frames,
                     coverage * 100,
                     len(latest),
+                    len(exchanges) * len(symbols),
+                    feature_streams,
                     len(exchanges) * len(symbols),
                 )
                 last_heartbeat = now
@@ -289,6 +305,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--hours", type=float, default=10)
     parser.add_argument("--sample-seconds", type=float, default=5)
+    parser.add_argument("--trade-flow-window-seconds", type=float, default=60)
     parser.add_argument("--heartbeat-seconds", type=float, default=60)
     parser.add_argument("--max-quote-age-seconds", type=float, default=15)
     parser.add_argument("--top", type=int, default=20, help="pairs read from candidate CSV")
@@ -317,6 +334,7 @@ def main() -> None:
         raise ValueError("hours cannot be negative")
     for name in (
         "sample_seconds",
+        "trade_flow_window_seconds",
         "heartbeat_seconds",
         "max_quote_age_seconds",
         "top",

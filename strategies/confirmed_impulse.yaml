@@ -1,0 +1,22 @@
+id: confirmed_impulse
+type: confirmed_impulse
+# Enable only after a feature-rich recording passes replay on an independent session.
+enabled: false
+symbols: []
+exchanges: [bybit, okx]
+parameters:
+  lookback_seconds: 60
+  # 20 bps fees + 4 bps slippage; spread is charged from actual bid/ask.
+  round_trip_cost_bps: 24
+  safety_margin_bps: 6
+  min_confirmed_move_bps: 30
+  max_exchange_divergence_bps: 10
+  min_book_imbalance: 0.15
+  min_trade_flow_imbalance: 0.10
+  exit_momentum_bps: 5
+  exit_book_imbalance: -0.05
+  exit_trade_flow_imbalance: -0.05
+  max_quote_age_seconds: 3
+  stop_loss_bps: 60
+  take_profit_bps: 120
+  max_hold_seconds: 300

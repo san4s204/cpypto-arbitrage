@@ -6,11 +6,13 @@ from typing import Any
 import yaml
 
 from app.strategies.base import BaseStrategy, StrategyConfig
+from app.strategies.confirmed_impulse import ConfirmedImpulseStrategy
 from app.strategies.latency_momentum import LatencyMomentumStrategy
 from app.strategies.micro_trend import MicroTrendStrategy
 from app.strategies.spread_reaction import SpreadReactionStrategy
 
 STRATEGY_TYPES: dict[str, type[BaseStrategy]] = {
+    "confirmed_impulse": ConfirmedImpulseStrategy,
     "latency_momentum": LatencyMomentumStrategy,
     "micro_trend": MicroTrendStrategy,
     "spread_reaction": SpreadReactionStrategy,
@@ -53,4 +55,3 @@ def load_risk_profile(config_dir: Path, profile_name: str) -> dict[str, Any]:
     if payload.get("profile") != profile_name:
         raise ValueError(f"{path} is not the {profile_name!r} risk profile")
     return payload
-

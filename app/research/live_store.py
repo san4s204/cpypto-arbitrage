@@ -15,6 +15,11 @@ class StoredQuote:
     ask: float
     occurred_at: datetime
     received_at: datetime
+    bid_size: float | None = None
+    ask_size: float | None = None
+    buy_volume: float | None = None
+    sell_volume: float | None = None
+    trade_flow_window_seconds: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +63,10 @@ class LiveQuoteStore:
             self.path.parent.mkdir(parents=True, exist_ok=True)
             self._connection = sqlite3.connect(path)
             self._initialize()
+        self._live_quote_columns = {
+            str(row[1])
+            for row in self._connection.execute("PRAGMA table_info(live_quotes)")
+        }
 
     def _initialize(self) -> None:
         self._connection.execute("PRAGMA journal_mode=WAL")
@@ -84,6 +93,11 @@ class LiveQuoteStore:
                 ask REAL NOT NULL,
                 occurred_at_ms INTEGER NOT NULL,
                 received_at_ms INTEGER NOT NULL,
+                bid_size REAL,
+                ask_size REAL,
+                buy_volume REAL,
+                sell_volume REAL,
+                trade_flow_window_seconds REAL,
                 PRIMARY KEY (session_id, sampled_at_ms, symbol, exchange),
                 FOREIGN KEY (session_id) REFERENCES recording_sessions(session_id)
             );
@@ -92,6 +106,21 @@ class LiveQuoteStore:
             ON live_quotes (session_id, symbol, sampled_at_ms);
             """
         )
+        columns = {
+            str(row[1])
+            for row in self._connection.execute("PRAGMA table_info(live_quotes)")
+        }
+        for name in (
+            "bid_size",
+            "ask_size",
+            "buy_volume",
+            "sell_volume",
+            "trade_flow_window_seconds",
+        ):
+            if name not in columns:
+                self._connection.execute(
+                    f"ALTER TABLE live_quotes ADD COLUMN {name} REAL"
+                )
         self._connection.commit()
 
     def start_session(
@@ -141,6 +170,11 @@ class LiveQuoteStore:
                 quote.ask,
                 _to_ms(quote.occurred_at),
                 _to_ms(quote.received_at),
+                quote.bid_size,
+                quote.ask_size,
+                quote.buy_volume,
+                quote.sell_volume,
+                quote.trade_flow_window_seconds,
             )
             for quote in quotes
         )
@@ -161,8 +195,13 @@ class LiveQuoteStore:
                     bid,
                     ask,
                     occurred_at_ms,
-                    received_at_ms
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    received_at_ms,
+                    bid_size,
+                    ask_size,
+                    buy_volume,
+                    sell_volume,
+                    trade_flow_window_seconds
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 self._pending,
             )
@@ -226,8 +265,19 @@ class LiveQuoteStore:
         self,
         session_id: str,
     ) -> Iterator[tuple[str, list[StoredFrame]]]:
+        optional_columns = (
+            name if name in self._live_quote_columns else f"NULL AS {name}"
+            for name in (
+                "bid_size",
+                "ask_size",
+                "buy_volume",
+                "sell_volume",
+                "trade_flow_window_seconds",
+            )
+        )
+        optional_select = ",\n                ".join(optional_columns)
         cursor = self._connection.execute(
-            """
+            f"""
             SELECT
                 sampled_at_ms,
                 symbol,
@@ -235,7 +285,8 @@ class LiveQuoteStore:
                 bid,
                 ask,
                 occurred_at_ms,
-                received_at_ms
+                received_at_ms,
+                {optional_select}
             FROM live_quotes
             WHERE session_id = ?
             ORDER BY symbol, sampled_at_ms, exchange
@@ -273,6 +324,13 @@ class LiveQuoteStore:
                 ask=float(row[4]),
                 occurred_at=datetime.fromtimestamp(int(row[5]) / 1_000, tz=UTC),
                 received_at=datetime.fromtimestamp(int(row[6]) / 1_000, tz=UTC),
+                bid_size=float(row[7]) if row[7] is not None else None,
+                ask_size=float(row[8]) if row[8] is not None else None,
+                buy_volume=float(row[9]) if row[9] is not None else None,
+                sell_volume=float(row[10]) if row[10] is not None else None,
+                trade_flow_window_seconds=(
+                    float(row[11]) if row[11] is not None else None
+                ),
             )
 
         if current_symbol is not None:
