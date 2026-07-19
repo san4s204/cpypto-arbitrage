@@ -40,13 +40,24 @@ def _to_ms(value: datetime) -> int:
 
 
 class LiveQuoteStore:
-    def __init__(self, path: Path, *, flush_rows: int = 400) -> None:
+    def __init__(
+        self,
+        path: Path,
+        *,
+        flush_rows: int = 400,
+        read_only: bool = False,
+    ) -> None:
         self.path = path
-        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self.read_only = read_only
         self.flush_rows = flush_rows
-        self._connection = sqlite3.connect(path)
         self._pending: list[tuple] = []
-        self._initialize()
+        if read_only:
+            uri = f"{path.resolve().as_uri()}?mode=ro"
+            self._connection = sqlite3.connect(uri, uri=True)
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self._connection = sqlite3.connect(path)
+            self._initialize()
 
     def _initialize(self) -> None:
         self._connection.execute("PRAGMA journal_mode=WAL")
@@ -200,6 +211,16 @@ class LiveQuoteStore:
             attempted_samples=int(row[6]),
             recorded_frames=int(row[7]),
         )
+
+    def list_sessions(self) -> list[RecordingSession]:
+        session_ids = self._connection.execute(
+            """
+            SELECT session_id
+            FROM recording_sessions
+            ORDER BY started_at_ms DESC
+            """
+        ).fetchall()
+        return [self.get_session(str(row[0])) for row in session_ids]
 
     def iter_symbol_frames(
         self,

@@ -70,6 +70,9 @@ def test_live_store_persists_a_synchronized_recording_session(tmp_path: Path) ->
     assert values[0][0] == "TEST/USDT"
     assert set(values[0][1][0].quotes) == {"bybit", "okx"}
 
+    with LiveQuoteStore(tmp_path / "live.sqlite3", read_only=True) as reader:
+        assert [item.session_id for item in reader.list_sessions()] == ["session"]
+
 
 def test_live_report_simulates_profitable_spread_convergence() -> None:
     frames = [

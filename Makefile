@@ -22,6 +22,9 @@ select-universe:
 record-live:
 	python -m app.research.record_live
 
+replay-microtrend:
+	python -m app.research.replay_microtrend
+
 compose-up:
 	docker compose up --build
 

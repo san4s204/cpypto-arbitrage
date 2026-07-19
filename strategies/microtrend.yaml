@@ -1,12 +1,15 @@
 id: micro_trend
 type: micro_trend
-enabled: true
+# The first synchronized bid/ask replay did not cover trading costs.
+# Re-enable only after a revised signal passes an independent replay session.
+enabled: false
 # The active universe is controlled centrally by SYMBOLS in .env.
 symbols: []
 exchanges: [bybit, okx]
 parameters:
-  fast_window: 8
-  slow_window: 30
+  # Real time windows keep the strategy stable across different WebSocket rates.
+  fast_seconds: 60
+  slow_seconds: 300
   entry_bps: 6
   exit_bps: 0
   stop_loss_bps: 35
