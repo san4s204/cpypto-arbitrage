@@ -1,6 +1,7 @@
 id: latency_momentum
 type: latency_momentum
-enabled: true
+# Enable only after a cost-aware replay passes on an independent session.
+enabled: false
 # The active universe is controlled centrally by SYMBOLS in .env.
 symbols: []
 exchanges: [bybit, okx]
