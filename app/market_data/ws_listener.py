@@ -13,7 +13,7 @@ from app.market_data.normalizer import normalize_order_book
 
 logger = logging.getLogger(__name__)
 TOP_OF_BOOK_LIMIT = 1
-HIGH_FREQUENCY_EXCHANGES = {"mexc"}
+MEXC_EXCHANGE_ID = "mexc"
 
 
 def _mexc_ping(_client: Any) -> dict[str, str]:
@@ -22,11 +22,33 @@ def _mexc_ping(_client: Any) -> dict[str, str]:
 
 
 def _configure_websocket_client(client: Any, exchange_id: str) -> Any:
-    if exchange_id == "mexc":
+    if exchange_id == MEXC_EXCHANGE_ID:
         # CCXT 4.5.67 sends lowercase ``ping`` while the current MEXC protobuf
         # endpoint requires uppercase ``PING`` and otherwise closes the socket.
         client.ping = _mexc_ping
     return client
+
+
+def _client_config() -> dict[str, Any]:
+    return {
+        "enableRateLimit": True,
+        "newUpdates": True,
+        "options": {"defaultType": "spot"},
+    }
+
+
+def _ticker_order_book(ticker: dict[str, Any]) -> dict[str, Any]:
+    bid = ticker.get("bid")
+    ask = ticker.get("ask")
+    if bid is None or ask is None:
+        raise ValueError("best bid/ask stream returned an incomplete quote")
+    bid_volume = ticker.get("bidVolume")
+    ask_volume = ticker.get("askVolume")
+    return {
+        "bids": [[bid] if bid_volume is None else [bid, bid_volume]],
+        "asks": [[ask] if ask_volume is None else [ask, ask_volume]],
+        "timestamp": ticker.get("timestamp"),
+    }
 
 
 @dataclass(slots=True)
@@ -105,35 +127,61 @@ class CcxtProMarketDataFeed:
     async def _watch(self, client, exchange_id: str, symbol: str) -> None:
         while True:
             try:
-                params = (
-                    {"frequency": "100ms"}
-                    if exchange_id in HIGH_FREQUENCY_EXCHANGES
-                    else {}
-                )
                 order_book = await client.watch_order_book(
                     symbol,
                     limit=TOP_OF_BOOK_LIMIT,
-                    params=params,
+                    params={},
                 )
-                received_at = utc_now()
-                buy_volume, sell_volume = self._trade_flows[
-                    (exchange_id, symbol)
-                ].snapshot(received_at)
-                quote = normalize_order_book(
-                    exchange=exchange_id,
-                    symbol=symbol,
-                    order_book=order_book,
-                    received_at=received_at,
-                    buy_volume=buy_volume,
-                    sell_volume=sell_volume,
-                    trade_flow_window_seconds=self.trade_flow_window_seconds,
-                )
-                await self._queue.put(quote)
+                await self._publish_order_book(exchange_id, symbol, order_book)
             except asyncio.CancelledError:
                 raise
             except Exception as error:
                 logger.warning("%s %s market data error: %s", exchange_id, symbol, error)
                 await asyncio.sleep(self.reconnect_delay_seconds)
+
+    async def _watch_mexc_top_of_book(
+        self,
+        client,
+        exchange_id: str,
+        symbol: str,
+    ) -> None:
+        while True:
+            try:
+                tickers = await client.watch_bids_asks([symbol])
+                ticker = tickers.get(symbol)
+                if ticker is None:
+                    raise ValueError("best bid/ask stream omitted the requested symbol")
+                await self._publish_order_book(
+                    exchange_id,
+                    symbol,
+                    _ticker_order_book(ticker),
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as error:
+                logger.warning("%s %s market data error: %s", exchange_id, symbol, error)
+                await asyncio.sleep(self.reconnect_delay_seconds)
+
+    async def _publish_order_book(
+        self,
+        exchange_id: str,
+        symbol: str,
+        order_book: dict[str, Any],
+    ) -> None:
+        received_at = utc_now()
+        buy_volume, sell_volume = self._trade_flows[
+            (exchange_id, symbol)
+        ].snapshot(received_at)
+        quote = normalize_order_book(
+            exchange=exchange_id,
+            symbol=symbol,
+            order_book=order_book,
+            received_at=received_at,
+            buy_volume=buy_volume,
+            sell_volume=sell_volume,
+            trade_flow_window_seconds=self.trade_flow_window_seconds,
+        )
+        await self._queue.put(quote)
 
     async def _watch_trades(self, client, exchange_id: str, symbol: str) -> None:
         while True:
@@ -161,27 +209,40 @@ class CcxtProMarketDataFeed:
             for exchange_id in self.exchange_ids:
                 exchange_class = getattr(ccxtpro, exchange_id)
                 client = _configure_websocket_client(
-                    exchange_class(
-                        {
-                            "enableRateLimit": True,
-                            "newUpdates": True,
-                            "options": {"defaultType": "spot"},
-                        }
-                    ),
+                    exchange_class(_client_config()),
                     exchange_id,
                 )
                 self._clients.append(client)
                 await client.load_markets()
+                trade_client = client
+                if exchange_id == MEXC_EXCHANGE_ID:
+                    # MEXC uses one physical socket per client. Isolating the trade
+                    # stream prevents an idle/rejected trade subscription from
+                    # taking the top-of-book feed down with it.
+                    trade_client = _configure_websocket_client(
+                        exchange_class(_client_config()),
+                        exchange_id,
+                    )
+                    trade_client.set_markets_from_exchange(client)
+                    self._clients.append(trade_client)
                 for symbol in self.symbols:
                     if symbol not in client.markets:
                         logger.warning("%s does not list %s", exchange_id, symbol)
                         continue
+                    if client.markets[symbol].get("active") is False:
+                        logger.warning("%s lists %s as inactive", exchange_id, symbol)
+                        continue
+                    market_watch = (
+                        self._watch_mexc_top_of_book
+                        if exchange_id == MEXC_EXCHANGE_ID
+                        else self._watch
+                    )
                     self._tasks.append(
-                        asyncio.create_task(self._watch(client, exchange_id, symbol))
+                        asyncio.create_task(market_watch(client, exchange_id, symbol))
                     )
                     self._tasks.append(
                         asyncio.create_task(
-                            self._watch_trades(client, exchange_id, symbol)
+                            self._watch_trades(trade_client, exchange_id, symbol)
                         )
                     )
 
