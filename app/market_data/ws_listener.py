@@ -223,8 +223,11 @@ class CcxtProMarketDataFeed:
                         exchange_class(_client_config()),
                         exchange_id,
                     )
-                    trade_client.set_markets_from_exchange(client)
                     self._clients.append(trade_client)
+                    # Keep compatibility with older CCXT 4.4 releases which do
+                    # not expose set_markets_from_exchange(). This costs one
+                    # extra REST request only during startup.
+                    await trade_client.load_markets()
                 for symbol in self.symbols:
                     if symbol not in client.markets:
                         logger.warning("%s does not list %s", exchange_id, symbol)
