@@ -1,4 +1,4 @@
-ccxt>=4.4,<5
+ccxt>=4.5.67,<5
 httpx>=0.27,<1
 python-dotenv>=1,<2
 PyYAML>=6,<7
