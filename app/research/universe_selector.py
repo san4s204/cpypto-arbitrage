@@ -30,6 +30,7 @@ LEVERAGED_SUFFIXES = ("2L", "2S", "3L", "3S", "5L", "5S", "BULL", "BEAR")
 @dataclass(frozen=True, slots=True)
 class PairLiquidity:
     symbol: str
+    exchanges: tuple[str, ...]
     min_quote_volume: float
     min_depth: float
 
@@ -37,6 +38,7 @@ class PairLiquidity:
 @dataclass(frozen=True, slots=True)
 class PairScore:
     symbol: str
+    exchanges: tuple[str, ...]
     min_quote_volume: float
     min_depth: float
     candle_count: int
@@ -52,12 +54,15 @@ class PairScore:
     eligible: bool
 
     def as_row(self) -> dict[str, str | int | float | bool]:
-        return asdict(self)
+        row = asdict(self)
+        row["exchanges"] = ",".join(self.exchanges)
+        return row
 
 
 @dataclass(frozen=True, slots=True)
 class UniverseSelectorConfig:
-    exchanges: tuple[str, ...] = ("bybit", "okx")
+    exchanges: tuple[str, ...] = ("bybit", "okx", "mexc")
+    min_exchanges: int = 2
     days: int = 14
     timeframe: str = "15m"
     max_history_pairs: int = 40
@@ -74,6 +79,8 @@ class UniverseSelectorConfig:
     def __post_init__(self) -> None:
         if len(self.exchanges) < 2:
             raise ValueError("universe selection requires at least two exchanges")
+        if not 2 <= self.min_exchanges <= len(self.exchanges):
+            raise ValueError("min_exchanges must be between two and exchange count")
         for name in (
             "days",
             "max_history_pairs",
@@ -108,8 +115,20 @@ def is_candidate_symbol(symbol: str) -> bool:
 def common_spot_symbols(
     markets_by_exchange: Mapping[str, Mapping[str, Mapping[str, Any]]],
 ) -> list[str]:
-    symbol_sets: list[set[str]] = []
-    for markets in markets_by_exchange.values():
+    coverage = spot_symbol_exchanges(markets_by_exchange)
+    exchange_count = len(markets_by_exchange)
+    return sorted(
+        symbol
+        for symbol, exchanges in coverage.items()
+        if len(exchanges) == exchange_count
+    )
+
+
+def spot_symbol_exchanges(
+    markets_by_exchange: Mapping[str, Mapping[str, Mapping[str, Any]]],
+) -> dict[str, tuple[str, ...]]:
+    coverage: dict[str, list[str]] = {}
+    for exchange, markets in markets_by_exchange.items():
         symbols = {
             str(market["symbol"])
             for market in markets.values()
@@ -118,10 +137,12 @@ def common_spot_symbols(
             and market.get("symbol")
             and is_candidate_symbol(str(market["symbol"]))
         }
-        symbol_sets.append(symbols)
-    if not symbol_sets:
-        return []
-    return sorted(set.intersection(*symbol_sets))
+        for symbol in symbols:
+            coverage.setdefault(symbol, []).append(exchange)
+    return {
+        symbol: tuple(sorted(exchanges))
+        for symbol, exchanges in coverage.items()
+    }
 
 
 def quote_volume(ticker: Mapping[str, Any] | None) -> float:
@@ -212,10 +233,11 @@ def score_pair_history(
     holding_bars: int,
 ) -> PairScore | None:
     mids = {
-        exchange: _candle_mids(candles)
+        exchange: values
         for exchange, candles in candles_by_exchange.items()
+        if (values := _candle_mids(candles))
     }
-    if len(mids) < 2 or any(not values for values in mids.values()):
+    if len(mids) < 2:
         return None
     common_timestamps = sorted(set.intersection(*(set(values) for values in mids.values())))
     if len(common_timestamps) <= holding_bars:
@@ -267,6 +289,7 @@ def score_pair_history(
     )
     return PairScore(
         symbol=symbol,
+        exchanges=tuple(sorted(mids)),
         min_quote_volume=min_quote_volume,
         min_depth=min_depth,
         candle_count=len(common_timestamps),
@@ -299,24 +322,34 @@ class UniverseSelector:
         self._semaphore = asyncio.Semaphore(config.concurrency)
 
     async def select(self) -> list[PairScore]:
-        symbols = common_spot_symbols(
+        symbol_exchanges = spot_symbol_exchanges(
             {exchange: client.markets for exchange, client in self.clients.items()}
         )
-        logger.info("universe: %d common active spot USDT pairs", len(symbols))
+        symbols = sorted(
+            symbol
+            for symbol, exchanges in symbol_exchanges.items()
+            if len(exchanges) >= self.config.min_exchanges
+        )
+        logger.info(
+            "universe: %d active spot USDT pairs listed on at least %d exchanges",
+            len(symbols),
+            self.config.min_exchanges,
+        )
         if not symbols:
             return []
 
         tickers = await self._fetch_tickers(symbols)
         volume_candidates = []
         for symbol in symbols:
+            supported_exchanges = symbol_exchanges[symbol]
             volumes = [
                 quote_volume(tickers[exchange].get(symbol))
-                for exchange in self.config.exchanges
+                for exchange in supported_exchanges
             ]
             min_volume = min(volumes, default=0.0)
             if min_volume >= self.config.min_quote_volume:
-                volume_candidates.append((symbol, min_volume))
-        volume_candidates.sort(key=lambda item: item[1], reverse=True)
+                volume_candidates.append((symbol, supported_exchanges, min_volume))
+        volume_candidates.sort(key=lambda item: item[2], reverse=True)
         prefilter_limit = (
             self.config.max_history_pairs
             * self.config.liquidity_prefilter_multiplier
@@ -329,8 +362,8 @@ class UniverseSelector:
 
         liquidity = await asyncio.gather(
             *(
-                self._measure_liquidity(symbol, min_volume)
-                for symbol, min_volume in volume_candidates
+                self._measure_liquidity(symbol, exchanges, min_volume)
+                for symbol, exchanges, min_volume in volume_candidates
             )
         )
         liquid_pairs = [
@@ -401,36 +434,40 @@ class UniverseSelector:
     async def _measure_liquidity(
         self,
         symbol: str,
+        exchanges: Sequence[str],
         min_volume: float,
     ) -> PairLiquidity | None:
-        depths: list[float] = []
-        for exchange in self.config.exchanges:
+        depths: dict[str, float] = {}
+        for exchange in exchanges:
             try:
                 async with self._semaphore:
                     order_book = await self.clients[exchange].fetch_order_book(
                         symbol,
                         limit=50,
                     )
-                depths.append(
-                    depth_within_band(order_book, self.config.depth_band_bps)
+                depths[exchange] = depth_within_band(
+                    order_book,
+                    self.config.depth_band_bps,
                 )
             except Exception as error:
                 logger.debug("%s %s depth unavailable: %s", exchange, symbol, error)
-                return None
+        if len(depths) < self.config.min_exchanges:
+            return None
         return PairLiquidity(
             symbol=symbol,
+            exchanges=tuple(depths),
             min_quote_volume=min_volume,
-            min_depth=min(depths, default=0.0),
+            min_depth=min(depths.values(), default=0.0),
         )
 
     async def _score_pair(self, liquidity: PairLiquidity) -> PairScore | None:
         candles = await asyncio.gather(
             *(
                 self._fetch_history(exchange, liquidity.symbol)
-                for exchange in self.config.exchanges
+                for exchange in liquidity.exchanges
             )
         )
-        candles_by_exchange = dict(zip(self.config.exchanges, candles, strict=True))
+        candles_by_exchange = dict(zip(liquidity.exchanges, candles, strict=True))
         return score_pair_history(
             liquidity.symbol,
             candles_by_exchange,

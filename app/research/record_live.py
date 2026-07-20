@@ -13,6 +13,11 @@ from uuid import uuid4
 from app.config.settings import AppSettings
 from app.domain.models import Quote, utc_now
 from app.market_data.ws_listener import CcxtProMarketDataFeed
+from app.research.latency_routes import (
+    analyze_latency_routes,
+    print_latency_route_ranking,
+    write_latency_route_report,
+)
 from app.research.live_report import (
     LivePairMetrics,
     analyze_live_pair,
@@ -69,21 +74,26 @@ def _record_synchronized_frames(
     latest: dict[tuple[str, str], Quote],
     exchanges: tuple[str, ...],
     symbols: tuple[str, ...],
+    min_exchanges: int,
     max_quote_age_seconds: float,
     counters: RecorderCounters,
 ) -> None:
     sampled_at = utc_now()
     counters.attempted_samples += 1
     for symbol in symbols:
-        quotes = [latest.get((exchange, symbol)) for exchange in exchanges]
-        if any(quote is None for quote in quotes):
-            continue
-        complete_quotes = [quote for quote in quotes if quote is not None]
-        if any(
-            quote.age_seconds(sampled_at) > max_quote_age_seconds
-            or (sampled_at - quote.received_at).total_seconds() > max_quote_age_seconds
-            for quote in complete_quotes
-        ):
+        fresh_quotes = []
+        for exchange in exchanges:
+            quote = latest.get((exchange, symbol))
+            if quote is None:
+                continue
+            if (
+                quote.age_seconds(sampled_at) > max_quote_age_seconds
+                or (sampled_at - quote.received_at).total_seconds()
+                > max_quote_age_seconds
+            ):
+                continue
+            fresh_quotes.append(quote)
+        if len(fresh_quotes) < min_exchanges:
             continue
         store.append_frame(
             session_id=session_id,
@@ -102,7 +112,7 @@ def _record_synchronized_frames(
                     sell_volume=quote.sell_volume,
                     trade_flow_window_seconds=quote.trade_flow_window_seconds,
                 )
-                for quote in complete_quotes
+                for quote in fresh_quotes
             ],
         )
         counters.recorded_frames += 1
@@ -115,12 +125,14 @@ def _build_report(
     fee_bps: dict[str, float],
     slippage_bps: float,
     output_path: Path,
+    latency_output_path: Path,
     top: int,
     spread_entry_bps: float,
     spread_exit_bps: float,
     spread_max_hold_seconds: float,
 ) -> list[LivePairMetrics]:
     session = store.get_session(session_id)
+    symbol_frames = dict(store.iter_symbol_frames(session_id))
     metrics = [
         analyze_live_pair(
             symbol,
@@ -133,7 +145,7 @@ def _build_report(
             spread_exit_bps=spread_exit_bps,
             spread_max_hold_seconds=spread_max_hold_seconds,
         )
-        for symbol, frames in store.iter_symbol_frames(session_id)
+        for symbol, frames in symbol_frames.items()
         if frames
     ]
     if not metrics:
@@ -150,6 +162,18 @@ def _build_report(
     write_live_report(output_path, metrics)
     print_live_rankings(metrics, top=top)
     print(f"\nLive report: {output_path}")
+    route_metrics = analyze_latency_routes(
+        session_id=session_id,
+        symbol_frames=symbol_frames,
+        exchanges=session.exchanges,
+        sample_interval_seconds=session.sample_interval_seconds,
+        fee_bps=fee_bps,
+        slippage_bps=slippage_bps,
+    )
+    if route_metrics:
+        write_latency_route_report(latency_output_path, route_metrics)
+        print_latency_route_ranking(route_metrics, top=max(top, 20))
+        print(f"\nLatency routes: {latency_output_path}")
     return metrics
 
 
@@ -158,6 +182,8 @@ async def run(args: argparse.Namespace) -> None:
     exchanges = (
         _csv_values(args.exchanges) if args.exchanges else settings.exchanges
     )
+    if not 2 <= args.min_exchanges <= len(exchanges):
+        raise ValueError("min_exchanges must be between two and exchange count")
     missing_fees = [
         exchange for exchange in exchanges if exchange not in settings.paper_fee_bps
     ]
@@ -188,6 +214,9 @@ async def run(args: argparse.Namespace) -> None:
     output_path = Path(args.output)
     if not output_path.is_absolute():
         output_path = settings.project_root / output_path
+    latency_output_path = Path(args.latency_output)
+    if not latency_output_path.is_absolute():
+        latency_output_path = settings.project_root / latency_output_path
 
     session_id = uuid4().hex
     store = LiveQuoteStore(db_path)
@@ -212,10 +241,11 @@ async def run(args: argparse.Namespace) -> None:
     cancelled = False
 
     logger.info(
-        "live recording started: session=%s exchanges=%s symbols=%d interval=%.1fs "
-        "duration=%s",
+        "live recording started: session=%s exchanges=%s min_exchanges=%d "
+        "symbols=%d interval=%.3fs duration=%s",
         session_id[:8],
         ",".join(exchanges),
+        args.min_exchanges,
         len(symbols),
         args.sample_seconds,
         f"{args.hours:g}h" if args.hours > 0 else "until Ctrl+C",
@@ -239,6 +269,7 @@ async def run(args: argparse.Namespace) -> None:
                 latest=latest,
                 exchanges=exchanges,
                 symbols=symbols,
+                min_exchanges=args.min_exchanges,
                 max_quote_age_seconds=args.max_quote_age_seconds,
                 counters=counters,
             )
@@ -288,6 +319,7 @@ async def run(args: argparse.Namespace) -> None:
                 fee_bps=settings.paper_fee_bps,
                 slippage_bps=settings.paper_slippage_bps,
                 output_path=output_path,
+                latency_output_path=latency_output_path,
                 top=args.report_top,
                 spread_entry_bps=args.spread_entry_bps,
                 spread_exit_bps=args.spread_exit_bps,
@@ -304,11 +336,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Record synchronized live quotes and rank pairs for each strategy"
     )
     parser.add_argument("--hours", type=float, default=10)
-    parser.add_argument("--sample-seconds", type=float, default=5)
+    parser.add_argument("--sample-seconds", type=float, default=0.5)
     parser.add_argument("--trade-flow-window-seconds", type=float, default=60)
     parser.add_argument("--heartbeat-seconds", type=float, default=60)
-    parser.add_argument("--max-quote-age-seconds", type=float, default=15)
-    parser.add_argument("--top", type=int, default=20, help="pairs read from candidate CSV")
+    parser.add_argument("--max-quote-age-seconds", type=float, default=2)
+    parser.add_argument("--min-exchanges", type=int, default=2)
+    parser.add_argument("--top", type=int, default=8, help="pairs read from candidate CSV")
     parser.add_argument("--report-top", type=int, default=10)
     parser.add_argument("--symbols", help="explicit comma-separated symbols")
     parser.add_argument("--exchanges", help="comma-separated exchanges; default: EXCHANGES")
@@ -318,6 +351,10 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--db", default="runtime/live_quotes.sqlite3")
     parser.add_argument("--output", default="runtime/live_universe_report.csv")
+    parser.add_argument(
+        "--latency-output",
+        default="runtime/live_latency_routes.csv",
+    )
     parser.add_argument("--spread-entry-bps", type=float, default=65)
     parser.add_argument("--spread-exit-bps", type=float, default=8)
     parser.add_argument("--spread-max-hold-seconds", type=float, default=300)

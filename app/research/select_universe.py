@@ -33,12 +33,12 @@ def _write_report(path: Path, scores: list[PairScore]) -> None:
 def _print_ranking(scores: list[PairScore], top: int) -> None:
     print("\nHistorical universe ranking")
     print(
-        f"{'#':>2}  {'symbol':<14} {'vol min':>10} {'depth':>9} "
+        f"{'#':>2}  {'symbol':<14} {'venues':<18} {'vol min':>10} {'depth':>9} "
         f"{'p95 edge':>9} {'events':>7} {'fwd pnl':>9} {'wins':>7} {'ok':>3}"
     )
     for index, score in enumerate(scores[:top], start=1):
         print(
-            f"{index:>2}  {score.symbol:<14} "
+            f"{index:>2}  {score.symbol:<14} {','.join(score.exchanges):<18} "
             f"{score.min_quote_volume / 1_000_000:>8.2f}M "
             f"{score.min_depth:>9.0f} "
             f"{score.p95_net_edge_bps:>8.1f}b "
@@ -54,6 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
         description="Rank common liquid spot-USDT pairs by historical cross-exchange spread"
     )
     parser.add_argument("--exchanges", help="comma-separated exchange ids; default: EXCHANGES")
+    parser.add_argument(
+        "--min-exchanges",
+        type=int,
+        default=2,
+        help="minimum venues listing a pair",
+    )
     parser.add_argument("--days", type=int, default=14)
     parser.add_argument("--timeframe", default="15m")
     parser.add_argument("--history-pairs", type=int, default=40)
@@ -93,6 +99,7 @@ async def run(args: argparse.Namespace) -> None:
         )
     config = UniverseSelectorConfig(
         exchanges=exchanges,
+        min_exchanges=args.min_exchanges,
         days=args.days,
         timeframe=args.timeframe,
         max_history_pairs=args.history_pairs,

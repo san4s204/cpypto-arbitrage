@@ -304,7 +304,7 @@ def analyze_live_pair(
 ) -> LivePairMetrics:
     routes = [route for frame in frames if (route := _best_route(frame)) is not None]
     gross_spreads = [route[2] for route in routes]
-    max_gap_seconds = max(sample_interval_seconds * 3, 15)
+    max_gap_seconds = max(sample_interval_seconds * 3, 2)
     trades = simulate_spread_trades(
         frames,
         entry_bps=spread_entry_bps,

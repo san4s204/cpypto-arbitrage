@@ -10,9 +10,11 @@ from app.market_data.ws_listener import CcxtProMarketDataFeed, RollingTradeFlow
 class RecordingClient:
     def __init__(self) -> None:
         self.requested_limit: int | None = None
+        self.requested_params: dict | None = None
 
-    async def watch_order_book(self, symbol: str, *, limit: int) -> dict:
+    async def watch_order_book(self, symbol: str, *, limit: int, params: dict) -> dict:
         self.requested_limit = limit
+        self.requested_params = params
         raise asyncio.CancelledError
 
 
@@ -28,6 +30,22 @@ async def test_websocket_feed_requests_exchange_compatible_top_of_book() -> None
         await feed._watch(client, "bybit", "ETH/USDT")
 
     assert client.requested_limit == 1
+    assert client.requested_params == {}
+
+
+@pytest.mark.asyncio
+async def test_mexc_websocket_feed_requests_100ms_updates() -> None:
+    feed = CcxtProMarketDataFeed(
+        exchanges=("mexc",),
+        symbols=("ETH/USDT",),
+    )
+    client = RecordingClient()
+
+    with pytest.raises(asyncio.CancelledError):
+        await feed._watch(client, "mexc", "ETH/USDT")
+
+    assert client.requested_limit == 1
+    assert client.requested_params == {"frequency": "100ms"}
 
 
 def test_order_book_normalizer_keeps_sizes_and_trade_flow() -> None:

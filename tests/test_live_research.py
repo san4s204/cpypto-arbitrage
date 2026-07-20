@@ -2,9 +2,15 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+from app.domain.models import Quote
+from app.research.latency_routes import analyze_latency_route
 from app.research.live_report import analyze_live_pair
 from app.research.live_store import LiveQuoteStore, StoredFrame, StoredQuote
-from app.research.record_live import load_candidate_symbols
+from app.research.record_live import (
+    RecorderCounters,
+    _record_synchronized_frames,
+    load_candidate_symbols,
+)
 
 BASE_TIME = datetime.now(UTC)
 
@@ -122,6 +128,52 @@ def test_live_store_migrates_the_previous_quote_schema(tmp_path: Path) -> None:
     } <= columns
 
 
+def test_recorder_keeps_a_pair_available_on_two_of_three_exchanges(tmp_path: Path) -> None:
+    path = tmp_path / "partial.sqlite3"
+    store = LiveQuoteStore(path)
+    store.start_session(
+        session_id="session",
+        started_at=BASE_TIME,
+        sample_interval_seconds=0.5,
+        symbols=("TEST/USDT",),
+        exchanges=("bybit", "okx", "mexc"),
+    )
+    latest = {
+        (exchange, "TEST/USDT"): Quote(
+            exchange=exchange,
+            symbol="TEST/USDT",
+            bid=99.9,
+            ask=100.1,
+            occurred_at=BASE_TIME,
+            received_at=BASE_TIME,
+        )
+        for exchange in ("bybit", "mexc")
+    }
+    counters = RecorderCounters()
+
+    _record_synchronized_frames(
+        store=store,
+        session_id="session",
+        latest=latest,
+        exchanges=("bybit", "okx", "mexc"),
+        symbols=("TEST/USDT",),
+        min_exchanges=2,
+        max_quote_age_seconds=2,
+        counters=counters,
+    )
+    store.finish_session(
+        session_id="session",
+        ended_at=BASE_TIME + timedelta(seconds=0.5),
+        attempted_samples=counters.attempted_samples,
+        recorded_frames=counters.recorded_frames,
+    )
+    values = list(store.iter_symbol_frames("session"))
+    store.close()
+
+    assert counters.recorded_frames == 1
+    assert set(values[0][1][0].quotes) == {"bybit", "mexc"}
+
+
 def test_live_report_simulates_profitable_spread_convergence() -> None:
     frames = [
         StoredFrame(
@@ -206,6 +258,32 @@ def test_live_report_detects_a_follower_response() -> None:
     assert metrics.latency_events == 1
     assert metrics.latency_follow_rate == 1
     assert metrics.latency_median_delay_seconds == 5
+
+
+def test_directed_latency_report_includes_cost_aware_route_metrics() -> None:
+    frames = [
+        frame(0, bybit=100, mexc=100),
+        frame(5, bybit=101, mexc=100),
+        frame(10, bybit=101, mexc=100.1),
+    ]
+
+    metrics = analyze_latency_route(
+        session_id="session",
+        symbol="TEST/USDT",
+        leader_exchange="bybit",
+        follower_exchange="mexc",
+        frames=frames,
+        sample_interval_seconds=5,
+        fee_bps={"bybit": 0, "mexc": 0},
+        slippage_bps=0,
+        min_trades=1,
+    )
+
+    assert metrics.events == 1
+    assert metrics.follow_rate == 1
+    assert metrics.median_delay_seconds == 5
+    assert metrics.trade_count == 1
+    assert metrics.expectancy_bps > 0
 
 
 def test_candidate_loader_keeps_csv_ranking_order(tmp_path: Path) -> None:

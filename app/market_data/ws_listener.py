@@ -13,6 +13,7 @@ from app.market_data.normalizer import normalize_order_book
 
 logger = logging.getLogger(__name__)
 TOP_OF_BOOK_LIMIT = 1
+HIGH_FREQUENCY_EXCHANGES = {"mexc"}
 
 
 @dataclass(slots=True)
@@ -91,9 +92,15 @@ class CcxtProMarketDataFeed:
     async def _watch(self, client, exchange_id: str, symbol: str) -> None:
         while True:
             try:
+                params = (
+                    {"frequency": "100ms"}
+                    if exchange_id in HIGH_FREQUENCY_EXCHANGES
+                    else {}
+                )
                 order_book = await client.watch_order_book(
                     symbol,
                     limit=TOP_OF_BOOK_LIMIT,
+                    params=params,
                 )
                 received_at = utc_now()
                 buy_volume, sell_volume = self._trade_flows[

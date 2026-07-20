@@ -4,13 +4,15 @@ from app.research.live_store import StoredFrame, StoredQuote
 from app.research.replay_latency import (
     LatencyReplayParameters,
     build_parameter_grid,
+    directed_routes,
+    replay_latency_route,
     replay_latency_symbol,
 )
 
 BASE_TIME = datetime(2026, 1, 1, tzinfo=UTC)
 
 
-def latency_frame(seconds: int, *, bybit: float, okx: float) -> StoredFrame:
+def latency_frame(seconds: int, **prices: float) -> StoredFrame:
     sampled_at = BASE_TIME + timedelta(seconds=seconds)
     return StoredFrame(
         sampled_at_ms=int(sampled_at.timestamp() * 1_000),
@@ -23,7 +25,7 @@ def latency_frame(seconds: int, *, bybit: float, okx: float) -> StoredFrame:
                 occurred_at=sampled_at,
                 received_at=sampled_at,
             )
-            for exchange, mid in {"bybit": bybit, "okx": okx}.items()
+            for exchange, mid in prices.items()
         },
     )
 
@@ -107,3 +109,42 @@ def test_latency_parameter_grid_deduplicates_values() -> None:
     )
 
     assert len(grid) == 8
+
+
+def test_route_replay_isolates_mexc_as_the_follower() -> None:
+    frames = [
+        latency_frame(0, bybit=100, okx=100, mexc=100),
+        latency_frame(5, bybit=101, okx=100.8, mexc=100),
+        latency_frame(10, bybit=101, okx=100.8, mexc=100.5),
+    ]
+
+    run = replay_latency_route(
+        session_id="session",
+        symbol="TEST/USDT",
+        leader_exchange="bybit",
+        follower_exchange="mexc",
+        frames=frames,
+        parameters=parameters(response_bps=40),
+        fee_bps={"bybit": 10, "okx": 10, "mexc": 5},
+        slippage_bps=2,
+        notional=100,
+        min_trades=1,
+        min_profit_factor=1.2,
+    )
+
+    assert run.leader_exchange == "bybit"
+    assert run.follower_exchange == "mexc"
+    assert run.metrics.trade_count == 1
+    assert run.metrics.expectancy_bps > 0
+    assert run.trades[0].exchange == "mexc"
+
+
+def test_three_exchanges_produce_six_directed_routes() -> None:
+    assert directed_routes(("bybit", "okx", "mexc")) == (
+        ("bybit", "okx"),
+        ("bybit", "mexc"),
+        ("okx", "bybit"),
+        ("okx", "mexc"),
+        ("mexc", "bybit"),
+        ("mexc", "okx"),
+    )

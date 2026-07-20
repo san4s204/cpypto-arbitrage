@@ -49,15 +49,19 @@ class LatencyReplayParameters:
 class LatencyReplayRun:
     session_id: str
     symbol: str
+    leader_exchange: str
+    follower_exchange: str
     parameters: LatencyReplayParameters
     metrics: MicroTrendReplayMetrics
     trades: tuple[ClosedTrade, ...]
 
     def as_row(self) -> dict[str, str | int | float | bool | None]:
         return _report_row(
-            row_type="pair",
+            row_type="route",
             session_id=self.session_id,
             symbol=self.symbol,
+            leader_exchange=self.leader_exchange,
+            follower_exchange=self.follower_exchange,
             parameters=self.parameters,
             metrics=self.metrics,
         )
@@ -74,6 +78,8 @@ class LatencyReplaySummary:
             row_type="aggregate",
             session_id=self.session_id,
             symbol="ALL",
+            leader_exchange="ALL",
+            follower_exchange="ALL",
             parameters=self.parameters,
             metrics=self.metrics,
         )
@@ -84,6 +90,8 @@ def _report_row(
     row_type: str,
     session_id: str,
     symbol: str,
+    leader_exchange: str,
+    follower_exchange: str,
     parameters: LatencyReplayParameters,
     metrics: MicroTrendReplayMetrics,
 ) -> dict[str, str | int | float | bool | None]:
@@ -91,6 +99,8 @@ def _report_row(
         "row_type": row_type,
         "session_id": session_id,
         "symbol": symbol,
+        "leader_exchange": leader_exchange,
+        "follower_exchange": follower_exchange,
         **asdict(parameters),
         **asdict(metrics),
     }
@@ -132,11 +142,12 @@ def _exit_action(entry_action: SignalAction) -> SignalAction:
     )
 
 
-def replay_latency_symbol(
+def replay_latency_route(
     *,
     session_id: str,
     symbol: str,
-    exchanges: Sequence[str],
+    leader_exchange: str,
+    follower_exchange: str,
     frames: Sequence[StoredFrame],
     parameters: LatencyReplayParameters,
     fee_bps: Mapping[str, float],
@@ -146,13 +157,16 @@ def replay_latency_symbol(
     min_profit_factor: float,
     max_gap_seconds: float = 15,
 ) -> LatencyReplayRun:
+    if leader_exchange == follower_exchange:
+        raise ValueError("leader and follower exchanges must differ")
     if notional <= 0:
         raise ValueError("notional must be positive")
     if slippage_bps < 0:
         raise ValueError("slippage_bps cannot be negative")
     if max_gap_seconds <= 0:
         raise ValueError("max_gap_seconds must be positive")
-    missing_fees = [exchange for exchange in exchanges if exchange not in fee_bps]
+    route_exchanges = (leader_exchange, follower_exchange)
+    missing_fees = [exchange for exchange in route_exchanges if exchange not in fee_bps]
     if missing_fees:
         raise ValueError("fees are missing for: " + ", ".join(missing_fees))
 
@@ -188,10 +202,9 @@ def replay_latency_symbol(
             index += 1
             continue
 
-        common_exchanges = [
+        route_available = all(
             exchange
-            for exchange in exchanges
-            if exchange in previous.quotes
+            in previous.quotes
             and exchange in current.quotes
             and _is_fresh(
                 previous,
@@ -203,30 +216,22 @@ def replay_latency_symbol(
                 current.quotes[exchange],
                 max_quote_age_seconds=parameters.max_quote_age_seconds,
             )
-        ]
-        if len(common_exchanges) < 2:
+            for exchange in route_exchanges
+        )
+        if not route_available:
             index += 1
             continue
 
-        returns = {
-            exchange: (
-                _mid(current.quotes[exchange]) / _mid(previous.quotes[exchange]) - 1
-            )
-            * 10_000
-            for exchange in common_exchanges
-        }
-        leader_exchange, leader_move = max(
-            returns.items(),
-            key=lambda item: abs(item[1]),
-        )
-        follower_exchange, follower_move = min(
-            (
-                (exchange, move)
-                for exchange, move in returns.items()
-                if exchange != leader_exchange
-            ),
-            key=lambda item: abs(item[1]),
-        )
+        leader_move = (
+            _mid(current.quotes[leader_exchange])
+            / _mid(previous.quotes[leader_exchange])
+            - 1
+        ) * 10_000
+        follower_move = (
+            _mid(current.quotes[follower_exchange])
+            / _mid(previous.quotes[follower_exchange])
+            - 1
+        ) * 10_000
         direction = 1 if leader_move > 0 else -1
         directional_gap = direction * (leader_move - follower_move)
         if (
@@ -314,6 +319,72 @@ def replay_latency_symbol(
     return LatencyReplayRun(
         session_id=session_id,
         symbol=symbol,
+        leader_exchange=leader_exchange,
+        follower_exchange=follower_exchange,
+        parameters=parameters,
+        metrics=calculate_replay_metrics(
+            trades,
+            min_trades=min_trades,
+            min_profit_factor=min_profit_factor,
+        ),
+        trades=trades,
+    )
+
+
+def directed_routes(exchanges: Sequence[str]) -> tuple[tuple[str, str], ...]:
+    unique = tuple(dict.fromkeys(exchanges))
+    if len(unique) < 2:
+        raise ValueError("latency replay requires at least two exchanges")
+    return tuple(
+        (leader, follower)
+        for leader in unique
+        for follower in unique
+        if leader != follower
+    )
+
+
+def replay_latency_symbol(
+    *,
+    session_id: str,
+    symbol: str,
+    exchanges: Sequence[str],
+    frames: Sequence[StoredFrame],
+    parameters: LatencyReplayParameters,
+    fee_bps: Mapping[str, float],
+    slippage_bps: float,
+    notional: float,
+    min_trades: int,
+    min_profit_factor: float,
+    max_gap_seconds: float = 15,
+) -> LatencyReplayRun:
+    route_runs = [
+        replay_latency_route(
+            session_id=session_id,
+            symbol=symbol,
+            leader_exchange=leader,
+            follower_exchange=follower,
+            frames=frames,
+            parameters=parameters,
+            fee_bps=fee_bps,
+            slippage_bps=slippage_bps,
+            notional=notional,
+            min_trades=min_trades,
+            min_profit_factor=min_profit_factor,
+            max_gap_seconds=max_gap_seconds,
+        )
+        for leader, follower in directed_routes(exchanges)
+    ]
+    trades = tuple(
+        sorted(
+            (trade for run in route_runs for trade in run.trades),
+            key=lambda trade: trade.closed_at,
+        )
+    )
+    return LatencyReplayRun(
+        session_id=session_id,
+        symbol=symbol,
+        leader_exchange="ANY",
+        follower_exchange="ANY",
         parameters=parameters,
         metrics=calculate_replay_metrics(
             trades,
@@ -364,6 +435,7 @@ def run_replay_grid(
     session_id: str,
     symbol_frames: Mapping[str, Sequence[StoredFrame]],
     exchanges: Sequence[str],
+    routes: Sequence[tuple[str, str]] | None,
     parameter_grid: Sequence[LatencyReplayParameters],
     fee_bps: Mapping[str, float],
     slippage_bps: float,
@@ -372,11 +444,13 @@ def run_replay_grid(
     min_profit_factor: float,
     max_gap_seconds: float,
 ) -> tuple[list[LatencyReplayRun], list[LatencyReplaySummary]]:
+    selected_routes = tuple(routes) if routes is not None else directed_routes(exchanges)
     runs = [
-        replay_latency_symbol(
+        replay_latency_route(
             session_id=session_id,
             symbol=symbol,
-            exchanges=exchanges,
+            leader_exchange=leader,
+            follower_exchange=follower,
             frames=frames,
             parameters=parameters,
             fee_bps=fee_bps,
@@ -388,6 +462,7 @@ def run_replay_grid(
         )
         for parameters in parameter_grid
         for symbol, frames in symbol_frames.items()
+        for leader, follower in selected_routes
     ]
     summaries: list[LatencyReplaySummary] = []
     for parameters in parameter_grid:
@@ -485,15 +560,17 @@ def print_replay_rankings(
         ),
         reverse=True,
     )
-    print("\nPAIR RANKING FOR TOP CONFIG")
+    print("\nROUTE RANKING FOR TOP CONFIG")
     print(
-        f"{'#':>2} {'symbol':<14} {'trades':>7} {'wins':>7} "
+        f"{'#':>2} {'symbol':<14} {'route':<20} {'trades':>7} {'wins':>7} "
         f"{'PF':>6} {'expect':>9} {'pnl':>10}"
     )
     for position, run in enumerate(matching, start=1):
         metrics = run.metrics
         print(
-            f"{position:>2} {run.symbol:<14} {metrics.trade_count:>7} "
+            f"{position:>2} {run.symbol:<14} "
+            f"{run.leader_exchange + '→' + run.follower_exchange:<20} "
+            f"{metrics.trade_count:>7} "
             f"{metrics.win_rate:>6.1%} "
             f"{_profit_factor_label(metrics.profit_factor, metrics.trade_count):>6} "
             f"{metrics.expectancy_bps:>8.1f}b {metrics.total_pnl_bps:>9.1f}b"
@@ -528,6 +605,30 @@ def _fee_values(raw: str) -> dict[str, float]:
     return result
 
 
+def _route_values(
+    raw: str,
+    exchanges: Sequence[str],
+) -> tuple[tuple[str, str], ...]:
+    available = set(exchanges)
+    routes: list[tuple[str, str]] = []
+    for item in raw.split(","):
+        value = item.strip()
+        if not value:
+            continue
+        leader, separator, follower = value.partition(">")
+        leader = leader.strip()
+        follower = follower.strip()
+        if not separator or leader == follower:
+            raise ValueError(f"invalid route {value!r}; expected leader>follower")
+        missing = [exchange for exchange in (leader, follower) if exchange not in available]
+        if missing:
+            raise ValueError("route exchanges are absent from session: " + ", ".join(missing))
+        routes.append((leader, follower))
+    if not routes:
+        raise ValueError("expected at least one route")
+    return tuple(dict.fromkeys(routes))
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description="Replay executable lead-lag trades on synchronized bid/ask quotes"
@@ -536,19 +637,20 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-id", help="default: latest recording session")
     parser.add_argument("--symbols", help="comma-separated symbols; default: all recorded")
     parser.add_argument("--exchanges", help="comma-separated exchanges; default: recorded")
-    parser.add_argument("--lookback-seconds", default="5")
+    parser.add_argument("--routes", help="comma-separated routes, e.g. bybit>mexc,mexc>okx")
+    parser.add_argument("--lookback-seconds", default="0.5,1")
     parser.add_argument("--leader-move-bps", default="12,20,30")
-    parser.add_argument("--min-gap-bps", default="8,15,25")
-    parser.add_argument("--response-bps", default="8,12,20,30,40")
+    parser.add_argument("--min-gap-bps", default="8,15")
+    parser.add_argument("--response-bps", default="8,15,25")
     parser.add_argument("--stop-move-bps", type=float, default=30)
-    parser.add_argument("--max-hold-seconds", default="5,10,20,30")
-    parser.add_argument("--cooldown-seconds", type=float, default=5)
-    parser.add_argument("--max-quote-age-seconds", type=float, default=3)
-    parser.add_argument("--max-gap-seconds", type=float, default=15)
+    parser.add_argument("--max-hold-seconds", default="1,2,5")
+    parser.add_argument("--cooldown-seconds", type=float, default=1)
+    parser.add_argument("--max-quote-age-seconds", type=float, default=2)
+    parser.add_argument("--max-gap-seconds", type=float)
     parser.add_argument("--notional", type=float, default=100)
     parser.add_argument("--min-trades", type=int, default=10)
     parser.add_argument("--min-profit-factor", type=float, default=1.2)
-    parser.add_argument("--fee-bps", help="override, e.g. bybit:10,okx:10")
+    parser.add_argument("--fee-bps", help="override, e.g. bybit:10,okx:10,mexc:10")
     parser.add_argument("--slippage-bps", type=float)
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument("--output", default="runtime/latency_replay.csv")
@@ -559,7 +661,7 @@ def run(args: argparse.Namespace) -> None:
     for name in ("notional", "min_trades", "min_profit_factor", "top"):
         if getattr(args, name) <= 0:
             raise ValueError(f"{name} must be positive")
-    if args.max_gap_seconds <= 0:
+    if args.max_gap_seconds is not None and args.max_gap_seconds <= 0:
         raise ValueError("max_gap_seconds must be positive")
 
     settings = AppSettings.from_env()
@@ -585,6 +687,7 @@ def run(args: argparse.Namespace) -> None:
         raise ValueError("symbols are absent from the session: " + ", ".join(missing_symbols))
     symbol_frames = {symbol: available[symbol] for symbol in requested_symbols}
     exchanges = _string_values(args.exchanges) if args.exchanges else session.exchanges
+    routes = _route_values(args.routes, exchanges) if args.routes else None
     fees = _fee_values(args.fee_bps) if args.fee_bps else settings.paper_fee_bps
     missing_fees = [exchange for exchange in exchanges if exchange not in fees]
     if missing_fees:
@@ -609,13 +712,18 @@ def run(args: argparse.Namespace) -> None:
         session_id=session.session_id,
         symbol_frames=symbol_frames,
         exchanges=exchanges,
+        routes=routes,
         parameter_grid=parameter_grid,
         fee_bps=fees,
         slippage_bps=slippage_bps,
         notional=args.notional,
         min_trades=args.min_trades,
         min_profit_factor=args.min_profit_factor,
-        max_gap_seconds=args.max_gap_seconds,
+        max_gap_seconds=(
+            args.max_gap_seconds
+            if args.max_gap_seconds is not None
+            else max(session.sample_interval_seconds * 3, 2)
+        ),
     )
     write_replay_report(output_path, runs=runs, summaries=summaries)
     duration_hours = (

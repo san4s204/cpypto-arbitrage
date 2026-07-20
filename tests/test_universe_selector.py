@@ -7,6 +7,7 @@ from app.research.universe_selector import (
     depth_within_band,
     round_trip_cost_bps,
     score_pair_history,
+    spot_symbol_exchanges,
 )
 
 
@@ -68,6 +69,28 @@ def test_common_spot_symbols_excludes_stables_leverage_and_inactive_markets() ->
     assert common_spot_symbols(markets) == ["BTC/USDT", "ETH/USDT"]
 
 
+def test_symbol_coverage_keeps_pairs_listed_on_any_two_exchanges() -> None:
+    markets = {
+        "bybit": {
+            "btc": {"symbol": "BTC/USDT", "spot": True, "active": True},
+            "only": {"symbol": "BYBIT/USDT", "spot": True, "active": True},
+        },
+        "okx": {
+            "btc": {"symbol": "BTC/USDT", "spot": True, "active": True},
+            "alt": {"symbol": "ALT/USDT", "spot": True, "active": True},
+        },
+        "mexc": {
+            "alt": {"symbol": "ALT/USDT", "spot": True, "active": True},
+        },
+    }
+
+    coverage = spot_symbol_exchanges(markets)
+
+    assert coverage["BTC/USDT"] == ("bybit", "okx")
+    assert coverage["ALT/USDT"] == ("mexc", "okx")
+    assert coverage["BYBIT/USDT"] == ("bybit",)
+
+
 def test_depth_uses_the_weaker_book_side_inside_price_band() -> None:
     order_book = {
         "bids": [[100, 10], [99.95, 20], [99, 1_000]],
@@ -95,6 +118,7 @@ def test_historical_score_includes_full_round_trip_cost_and_convergence() -> Non
     )
 
     assert score is not None
+    assert score.exchanges == ("bybit", "okx")
     assert score.opportunity_count == 1
     assert score.opportunity_rate == 0.5
     assert score.mean_forward_pnl_bps == pytest.approx(158.0392, rel=1e-4)

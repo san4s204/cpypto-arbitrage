@@ -27,12 +27,17 @@ class AppSettings:
     project_root: Path
     bot_mode: str = "paper"
     market_data_mode: str = "ws"
-    exchanges: tuple[str, ...] = ("bybit", "okx")
+    exchanges: tuple[str, ...] = ("bybit", "okx", "mexc")
     symbols: tuple[str, ...] = ("BTC/USDT", "ETH/USDT")
     risk_profile: str = "conservative"
     initial_equity: float = 3_000.0
     paper_fee_bps: dict[str, float] = field(
-        default_factory=lambda: {"bybit": 10.0, "okx": 10.0}
+        default_factory=lambda: {
+            "bybit": 10.0,
+            "okx": 10.0,
+            "bitget": 10.0,
+            "mexc": 10.0,
+        }
     )
     paper_slippage_bps: float = 2.0
     sqlite_path: Path = Path("runtime/paper_trading.sqlite3")
@@ -68,7 +73,7 @@ class AppSettings:
             project_root=root,
             bot_mode=os.getenv("BOT_MODE", "paper").strip().lower(),
             market_data_mode=os.getenv("MARKET_DATA_MODE", "ws").strip().lower(),
-            exchanges=_csv("EXCHANGES", "bybit,okx"),
+            exchanges=_csv("EXCHANGES", "bybit,okx,mexc"),
             symbols=_csv("SYMBOLS", "BTC/USDT,ETH/USDT"),
             risk_profile=os.getenv("RISK_PROFILE", "conservative").strip(),
             initial_equity=float(os.getenv("PAPER_INITIAL_EQUITY", "3000")),
