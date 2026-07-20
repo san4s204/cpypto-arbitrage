@@ -61,7 +61,7 @@ class PairScore:
 
 @dataclass(frozen=True, slots=True)
 class UniverseSelectorConfig:
-    exchanges: tuple[str, ...] = ("bybit", "okx", "mexc")
+    exchanges: tuple[str, ...] = ("bybit", "okx", "bitget")
     min_exchanges: int = 2
     days: int = 14
     timeframe: str = "15m"

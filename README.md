@@ -90,7 +90,7 @@ BTC и ETH удобны для проверки инфраструктуры, н
 .venv\Scripts\python -m app.research.select_universe `
   --days 14 `
   --timeframe 15m `
-  --exchanges bybit,okx,mexc `
+  --exchanges bybit,okx,bitget `
   --min-exchanges 2 `
   --history-pairs 40 `
   --top 8
@@ -121,8 +121,8 @@ OHLCV используется только как дешёвый предвар
 Останови основной бот, не давай компьютеру уйти в сон и запусти:
 
 ```dotenv
-EXCHANGES=bybit,okx,mexc
-PAPER_FEE_BPS=bybit:10,okx:10,mexc:10
+EXCHANGES=bybit,okx,bitget
+PAPER_FEE_BPS=bybit:10,okx:10,bitget:10
 ```
 
 Значения выше — безопасное Paper-допущение для старта, а не обещание тарифа биржи.
@@ -131,7 +131,7 @@ PAPER_FEE_BPS=bybit:10,okx:10,mexc:10
 ```powershell
 .venv\Scripts\python -m app.research.record_live `
   --hours 3 `
-  --exchanges bybit,okx,mexc `
+  --exchanges bybit,okx,bitget `
   --min-exchanges 2 `
   --symbols GRAM/USDT,TRUMP/USDT,LIT/USDT `
   --sample-seconds 0.5
@@ -158,8 +158,8 @@ PAPER_FEE_BPS=bybit:10,okx:10,mexc:10
 Spread-рейтинг симулирует парный вход и выход на фактических bid/ask с комиссиями и
 проскальзыванием. Micro-trend сравнивает движения за 1 и 5 минут с расходами одиночной
 сделки. Обычный Latency показывает общую последовательность движения, а Directed
-Latency отдельно проверяет все доступные маршруты — например, `bybit → mexc` и
-`mexc → bybit` — и сразу вычитает расходы ведомой биржи.
+Latency отдельно проверяет все доступные маршруты — например, `bybit → bitget` и
+`bitget → bybit` — и сразу вычитает расходы ведомой биржи.
 
 Важно: `LATENCY RANKING` подтверждает только наблюдаемую последовательность движения.
 Он не вычитает расходы из ответного движения и поэтому сам по себе не является
@@ -204,7 +204,7 @@ stop или лимит времени и вычитает обе комисси�
 ```powershell
 .venv\Scripts\python -m app.research.replay_latency `
   --symbols GRAM/USDT,TRUMP/USDT,LIT/USDT `
-  --routes "bybit>mexc,mexc>bybit,okx>mexc,mexc>okx"
+  --routes "bybit>bitget,bitget>bybit,okx>bitget,bitget>okx"
 ```
 
 Если `--routes` не задан, перебираются все направленные пары доступных бирж — для трёх
@@ -218,8 +218,8 @@ stop или лимит времени и вычитает обе комисси�
 
 ```powershell
 .venv\Scripts\python -m app.research.replay_latency `
-  --routes "bybit>mexc,mexc>bybit" `
-  --fee-bps bybit:10,okx:10,mexc:5 `
+  --routes "bybit>bitget,bitget>bybit" `
+  --fee-bps bybit:10,okx:10,bitget:5 `
   --output runtime/latency_replay_low_fee.csv
 ```
 
@@ -295,7 +295,7 @@ tests/             # изолированные тесты без подключ
 - `EXCHANGES` и `SYMBOLS` — источники и пары;
 - `PAPER_DB_PATH` — локальная SQLite-база.
 
-Стартовый профиль подключает `bybit,okx,mexc`. Значения комиссий в `.env.sample` —
+Стартовый профиль подключает `bybit,okx,bitget`. Значения комиссий в `.env.sample` —
 консервативные предположения для Paper Trading; перед решением о реальном исполнении их
 нужно заменить на фактический тариф аккаунта и выбранного рынка.
 

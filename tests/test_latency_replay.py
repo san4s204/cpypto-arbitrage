@@ -111,21 +111,21 @@ def test_latency_parameter_grid_deduplicates_values() -> None:
     assert len(grid) == 8
 
 
-def test_route_replay_isolates_mexc_as_the_follower() -> None:
+def test_route_replay_isolates_bitget_as_the_follower() -> None:
     frames = [
-        latency_frame(0, bybit=100, okx=100, mexc=100),
-        latency_frame(5, bybit=101, okx=100.8, mexc=100),
-        latency_frame(10, bybit=101, okx=100.8, mexc=100.5),
+        latency_frame(0, bybit=100, okx=100, bitget=100),
+        latency_frame(5, bybit=101, okx=100.8, bitget=100),
+        latency_frame(10, bybit=101, okx=100.8, bitget=100.5),
     ]
 
     run = replay_latency_route(
         session_id="session",
         symbol="TEST/USDT",
         leader_exchange="bybit",
-        follower_exchange="mexc",
+        follower_exchange="bitget",
         frames=frames,
         parameters=parameters(response_bps=40),
-        fee_bps={"bybit": 10, "okx": 10, "mexc": 5},
+        fee_bps={"bybit": 10, "okx": 10, "bitget": 10},
         slippage_bps=2,
         notional=100,
         min_trades=1,
@@ -133,18 +133,18 @@ def test_route_replay_isolates_mexc_as_the_follower() -> None:
     )
 
     assert run.leader_exchange == "bybit"
-    assert run.follower_exchange == "mexc"
+    assert run.follower_exchange == "bitget"
     assert run.metrics.trade_count == 1
     assert run.metrics.expectancy_bps > 0
-    assert run.trades[0].exchange == "mexc"
+    assert run.trades[0].exchange == "bitget"
 
 
 def test_three_exchanges_produce_six_directed_routes() -> None:
-    assert directed_routes(("bybit", "okx", "mexc")) == (
+    assert directed_routes(("bybit", "okx", "bitget")) == (
         ("bybit", "okx"),
-        ("bybit", "mexc"),
+        ("bybit", "bitget"),
         ("okx", "bybit"),
-        ("okx", "mexc"),
-        ("mexc", "bybit"),
-        ("mexc", "okx"),
+        ("okx", "bitget"),
+        ("bitget", "bybit"),
+        ("bitget", "okx"),
     )

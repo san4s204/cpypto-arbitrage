@@ -27,7 +27,7 @@ class AppSettings:
     project_root: Path
     bot_mode: str = "paper"
     market_data_mode: str = "ws"
-    exchanges: tuple[str, ...] = ("bybit", "okx", "mexc")
+    exchanges: tuple[str, ...] = ("bybit", "okx", "bitget")
     symbols: tuple[str, ...] = ("BTC/USDT", "ETH/USDT")
     risk_profile: str = "conservative"
     initial_equity: float = 3_000.0
@@ -36,7 +36,6 @@ class AppSettings:
             "bybit": 10.0,
             "okx": 10.0,
             "bitget": 10.0,
-            "mexc": 10.0,
         }
     )
     paper_slippage_bps: float = 2.0
@@ -67,13 +66,13 @@ class AppSettings:
 
         db_path = Path(os.getenv("PAPER_DB_PATH", "runtime/paper_trading.sqlite3"))
         strategy_dir = Path(os.getenv("STRATEGY_CONFIG_DIR", "strategies"))
-        default_fees = "bybit:10,okx:10,bitget:10,mexc:10"
+        default_fees = "bybit:10,okx:10,bitget:10"
 
         return cls(
             project_root=root,
             bot_mode=os.getenv("BOT_MODE", "paper").strip().lower(),
             market_data_mode=os.getenv("MARKET_DATA_MODE", "ws").strip().lower(),
-            exchanges=_csv("EXCHANGES", "bybit,okx,mexc"),
+            exchanges=_csv("EXCHANGES", "bybit,okx,bitget"),
             symbols=_csv("SYMBOLS", "BTC/USDT,ETH/USDT"),
             risk_profile=os.getenv("RISK_PROFILE", "conservative").strip(),
             initial_equity=float(os.getenv("PAPER_INITIAL_EQUITY", "3000")),

@@ -79,7 +79,7 @@ def test_symbol_coverage_keeps_pairs_listed_on_any_two_exchanges() -> None:
             "btc": {"symbol": "BTC/USDT", "spot": True, "active": True},
             "alt": {"symbol": "ALT/USDT", "spot": True, "active": True},
         },
-        "mexc": {
+        "bitget": {
             "alt": {"symbol": "ALT/USDT", "spot": True, "active": True},
         },
     }
@@ -87,7 +87,7 @@ def test_symbol_coverage_keeps_pairs_listed_on_any_two_exchanges() -> None:
     coverage = spot_symbol_exchanges(markets)
 
     assert coverage["BTC/USDT"] == ("bybit", "okx")
-    assert coverage["ALT/USDT"] == ("mexc", "okx")
+    assert coverage["ALT/USDT"] == ("bitget", "okx")
     assert coverage["BYBIT/USDT"] == ("bybit",)
 
 

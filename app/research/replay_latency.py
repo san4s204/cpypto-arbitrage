@@ -637,7 +637,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--session-id", help="default: latest recording session")
     parser.add_argument("--symbols", help="comma-separated symbols; default: all recorded")
     parser.add_argument("--exchanges", help="comma-separated exchanges; default: recorded")
-    parser.add_argument("--routes", help="comma-separated routes, e.g. bybit>mexc,mexc>okx")
+    parser.add_argument(
+        "--routes",
+        help="comma-separated routes, e.g. bybit>bitget,bitget>okx",
+    )
     parser.add_argument("--lookback-seconds", default="0.5,1")
     parser.add_argument("--leader-move-bps", default="12,20,30")
     parser.add_argument("--min-gap-bps", default="8,15")
@@ -650,7 +653,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--notional", type=float, default=100)
     parser.add_argument("--min-trades", type=int, default=10)
     parser.add_argument("--min-profit-factor", type=float, default=1.2)
-    parser.add_argument("--fee-bps", help="override, e.g. bybit:10,okx:10,mexc:10")
+    parser.add_argument(
+        "--fee-bps",
+        help="override, e.g. bybit:10,okx:10,bitget:10",
+    )
     parser.add_argument("--slippage-bps", type=float)
     parser.add_argument("--top", type=int, default=10)
     parser.add_argument("--output", default="runtime/latency_replay.csv")

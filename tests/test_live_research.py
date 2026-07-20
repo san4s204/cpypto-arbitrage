@@ -136,7 +136,7 @@ def test_recorder_keeps_a_pair_available_on_two_of_three_exchanges(tmp_path: Pat
         started_at=BASE_TIME,
         sample_interval_seconds=0.5,
         symbols=("TEST/USDT",),
-        exchanges=("bybit", "okx", "mexc"),
+        exchanges=("bybit", "okx", "bitget"),
     )
     latest = {
         (exchange, "TEST/USDT"): Quote(
@@ -147,7 +147,7 @@ def test_recorder_keeps_a_pair_available_on_two_of_three_exchanges(tmp_path: Pat
             occurred_at=BASE_TIME,
             received_at=BASE_TIME,
         )
-        for exchange in ("bybit", "mexc")
+        for exchange in ("bybit", "bitget")
     }
     counters = RecorderCounters()
 
@@ -155,7 +155,7 @@ def test_recorder_keeps_a_pair_available_on_two_of_three_exchanges(tmp_path: Pat
         store=store,
         session_id="session",
         latest=latest,
-        exchanges=("bybit", "okx", "mexc"),
+        exchanges=("bybit", "okx", "bitget"),
         symbols=("TEST/USDT",),
         min_exchanges=2,
         max_quote_age_seconds=2,
@@ -171,7 +171,7 @@ def test_recorder_keeps_a_pair_available_on_two_of_three_exchanges(tmp_path: Pat
     store.close()
 
     assert counters.recorded_frames == 1
-    assert set(values[0][1][0].quotes) == {"bybit", "mexc"}
+    assert set(values[0][1][0].quotes) == {"bybit", "bitget"}
 
 
 def test_live_report_simulates_profitable_spread_convergence() -> None:
@@ -262,19 +262,19 @@ def test_live_report_detects_a_follower_response() -> None:
 
 def test_directed_latency_report_includes_cost_aware_route_metrics() -> None:
     frames = [
-        frame(0, bybit=100, mexc=100),
-        frame(5, bybit=101, mexc=100),
-        frame(10, bybit=101, mexc=100.1),
+        frame(0, bybit=100, bitget=100),
+        frame(5, bybit=101, bitget=100),
+        frame(10, bybit=101, bitget=100.1),
     ]
 
     metrics = analyze_latency_route(
         session_id="session",
         symbol="TEST/USDT",
         leader_exchange="bybit",
-        follower_exchange="mexc",
+        follower_exchange="bitget",
         frames=frames,
         sample_interval_seconds=5,
-        fee_bps={"bybit": 0, "mexc": 0},
+        fee_bps={"bybit": 0, "bitget": 0},
         slippage_bps=0,
         min_trades=1,
     )

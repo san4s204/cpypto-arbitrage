@@ -7,8 +7,6 @@ from app.market_data.normalizer import normalize_order_book
 from app.market_data.ws_listener import (
     CcxtProMarketDataFeed,
     RollingTradeFlow,
-    _configure_websocket_client,
-    _ticker_order_book,
 )
 
 
@@ -21,50 +19,6 @@ class RecordingClient:
         self.requested_limit = limit
         self.requested_params = params
         raise asyncio.CancelledError
-
-
-class MexcRecordingClient:
-    def __init__(self) -> None:
-        self.requested_symbols: list[str] | None = None
-        self.calls = 0
-
-    async def watch_bids_asks(self, symbols: list[str]) -> dict:
-        self.calls += 1
-        if self.calls > 1:
-            raise asyncio.CancelledError
-        self.requested_symbols = symbols
-        return {
-            "ETH/USDT": {
-                "bid": 100,
-                "ask": 101,
-                "bidVolume": 8,
-                "askVolume": 2,
-                "timestamp": 1_700_000_000_000,
-            }
-        }
-
-
-def test_mexc_client_uses_the_documented_uppercase_ping() -> None:
-    client = RecordingClient()
-    client.ping = lambda _: {"method": "ping"}
-
-    configured = _configure_websocket_client(client, "mexc")
-
-    assert configured is client
-    assert client.ping(None) == {"method": "PING"}
-
-
-def test_other_exchange_ping_is_not_modified() -> None:
-    client = RecordingClient()
-
-    def original_ping(_client) -> dict[str, str]:
-        return {"op": "ping"}
-
-    client.ping = original_ping
-
-    _configure_websocket_client(client, "bybit")
-
-    assert client.ping is original_ping
 
 
 @pytest.mark.asyncio
@@ -83,31 +37,18 @@ async def test_websocket_feed_requests_exchange_compatible_top_of_book() -> None
 
 
 @pytest.mark.asyncio
-async def test_mexc_websocket_feed_uses_best_bid_ask_stream() -> None:
+async def test_bitget_websocket_feed_requests_top_of_book_channel() -> None:
     feed = CcxtProMarketDataFeed(
-        exchanges=("mexc",),
+        exchanges=("bitget",),
         symbols=("ETH/USDT",),
     )
-    client = MexcRecordingClient()
+    client = RecordingClient()
 
     with pytest.raises(asyncio.CancelledError):
-        await feed._watch_mexc_top_of_book(client, "mexc", "ETH/USDT")
+        await feed._watch(client, "bitget", "ETH/USDT")
 
-    quote = feed._queue.get_nowait()
-    assert client.requested_symbols == ["ETH/USDT"]
-    assert quote.exchange == "mexc"
-    assert quote.bid == 100
-    assert quote.ask == 101
-    assert quote.bid_size == 8
-    assert quote.ask_size == 2
-
-
-def test_best_bid_ask_ticker_without_sizes_remains_valid() -> None:
-    assert _ticker_order_book({"bid": 100, "ask": 101}) == {
-        "bids": [[100]],
-        "asks": [[101]],
-        "timestamp": None,
-    }
+    assert client.requested_limit == 1
+    assert client.requested_params == {}
 
 
 def test_order_book_normalizer_keeps_sizes_and_trade_flow() -> None:
