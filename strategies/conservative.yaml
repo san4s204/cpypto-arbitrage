@@ -1,0 +1,14 @@
+profile: conservative
+risk:
+  max_open_positions: 4
+  max_notional_per_position: 150
+  max_total_exposure: 600
+  max_daily_loss: 45
+  max_quote_age_seconds: 3
+  min_signal_confidence: 0.25
+  cooldown_seconds: 20
+position_sizing:
+  allocation_fraction: 0.04
+  min_notional: 15
+  max_notional: 150
+

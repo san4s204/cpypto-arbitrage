@@ -1,0 +1,12 @@
+id: spread_reaction
+type: spread_reaction
+enabled: true
+# The active universe is controlled centrally by SYMBOLS in .env.
+symbols: []
+exchanges: [bybit, okx]
+parameters:
+  # 48 bps paper round trip + 8 bps exit spread + safety margin.
+  entry_bps: 65
+  exit_bps: 8
+  max_quote_age_seconds: 2
+  max_hold_seconds: 300

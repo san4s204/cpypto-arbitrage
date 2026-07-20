@@ -1,0 +1,15 @@
+id: latency_momentum
+type: latency_momentum
+# Enable only after a cost-aware replay passes on an independent session.
+enabled: false
+# The active universe is controlled centrally by SYMBOLS in .env.
+symbols: []
+exchanges: [bybit, okx]
+parameters:
+  lookback_seconds: 5
+  leader_move_bps: 12
+  min_gap_bps: 8
+  exit_reversal_bps: 5
+  stop_loss_bps: 30
+  take_profit_bps: 50
+  max_hold_seconds: 120

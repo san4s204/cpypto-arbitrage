@@ -1,6 +1,35 @@
+install:
+	python -m pip install -r requirements.txt
+
+install-dev:
+	python -m pip install -r requirements-dev.txt
+
+install-legacy:
+	python -m pip install -r requirements-legacy.txt
+
 lint:
-	ruff src tests
+	python -m ruff check app tests
+
 test:
-	pytest -q
+	python -m pytest -q tests
+
 run:
-	docker compose exec app python -m src.realtime.ws_listener
+	python -m app.main
+
+select-universe:
+	python -m app.research.select_universe
+
+record-live:
+	python -m app.research.record_live
+
+replay-microtrend:
+	python -m app.research.replay_microtrend
+
+replay-impulse:
+	python -m app.research.replay_confirmed_impulse
+
+compose-up:
+	docker compose up --build
+
+compose-down:
+	docker compose down

@@ -1,9 +1,16 @@
-version: "3.9"
-
 services:
-  # ─────────── База данных ───────────
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - runtime_data:/app/runtime
+    networks: [arbnet]
+
+  # Legacy research infrastructure. Start with: docker compose --profile legacy up
   db:
     image: postgres:16
+    profiles: [legacy]
     restart: unless-stopped
     environment:
       POSTGRES_USER: arb
@@ -12,31 +19,22 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "1488:5432"
+      - "127.0.0.1:1488:5432"
     networks: [arbnet]
 
-  # ─────────── Redis (pub/sub + кэш) ───────────
   redis:
     image: redis:7-alpine
+    profiles: [legacy]
     restart: unless-stopped
-    command: redis-server --appendonly yes          # AOF для сохранности данных
+    command: redis-server --appendonly yes
     ports:
-      - "6379:6379"                                 # при желании убрать наружу → удалите эту строку
+      - "127.0.0.1:6379:6379"
     volumes:
       - redisdata:/data
     networks: [arbnet]
 
-  # ─────────── (пример) WS-воркер ───────────
-  
-  ws_listener:
-    build: .                # использует Dockerfile выше
-    working_dir: /app       # на всякий случай
-    command: python -m realtime.ws_listener
-    env_file: .env
-    depends_on: [redis, db]
-    networks: [arbnet]
-
 volumes:
+  runtime_data:
   pgdata:
   redisdata:
 

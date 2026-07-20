@@ -1,0 +1,13 @@
+profile: aggressive
+risk:
+  max_open_positions: 8
+  max_notional_per_position: 300
+  max_total_exposure: 1500
+  max_daily_loss: 120
+  max_quote_age_seconds: 2
+  min_signal_confidence: 0.15
+  cooldown_seconds: 5
+position_sizing:
+  allocation_fraction: 0.08
+  min_notional: 25
+  max_notional: 300
