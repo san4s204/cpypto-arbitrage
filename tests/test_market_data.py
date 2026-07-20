@@ -4,7 +4,11 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from app.market_data.normalizer import normalize_order_book
-from app.market_data.ws_listener import CcxtProMarketDataFeed, RollingTradeFlow
+from app.market_data.ws_listener import (
+    CcxtProMarketDataFeed,
+    RollingTradeFlow,
+    _configure_websocket_client,
+)
 
 
 class RecordingClient:
@@ -16,6 +20,29 @@ class RecordingClient:
         self.requested_limit = limit
         self.requested_params = params
         raise asyncio.CancelledError
+
+
+def test_mexc_client_uses_the_documented_uppercase_ping() -> None:
+    client = RecordingClient()
+    client.ping = lambda _: {"method": "ping"}
+
+    configured = _configure_websocket_client(client, "mexc")
+
+    assert configured is client
+    assert client.ping(None) == {"method": "PING"}
+
+
+def test_other_exchange_ping_is_not_modified() -> None:
+    client = RecordingClient()
+
+    def original_ping(_client) -> dict[str, str]:
+        return {"op": "ping"}
+
+    client.ping = original_ping
+
+    _configure_websocket_client(client, "bybit")
+
+    assert client.ping is original_ping
 
 
 @pytest.mark.asyncio

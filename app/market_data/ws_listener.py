@@ -16,6 +16,19 @@ TOP_OF_BOOK_LIMIT = 1
 HIGH_FREQUENCY_EXCHANGES = {"mexc"}
 
 
+def _mexc_ping(_client: Any) -> dict[str, str]:
+    """Return the uppercase application heartbeat required by MEXC spot WS."""
+    return {"method": "PING"}
+
+
+def _configure_websocket_client(client: Any, exchange_id: str) -> Any:
+    if exchange_id == "mexc":
+        # CCXT 4.5.67 sends lowercase ``ping`` while the current MEXC protobuf
+        # endpoint requires uppercase ``PING`` and otherwise closes the socket.
+        client.ping = _mexc_ping
+    return client
+
+
 @dataclass(slots=True)
 class RollingTradeFlow:
     window_seconds: float
@@ -147,12 +160,15 @@ class CcxtProMarketDataFeed:
         try:
             for exchange_id in self.exchange_ids:
                 exchange_class = getattr(ccxtpro, exchange_id)
-                client = exchange_class(
-                    {
-                        "enableRateLimit": True,
-                        "newUpdates": True,
-                        "options": {"defaultType": "spot"},
-                    }
+                client = _configure_websocket_client(
+                    exchange_class(
+                        {
+                            "enableRateLimit": True,
+                            "newUpdates": True,
+                            "options": {"defaultType": "spot"},
+                        }
+                    ),
+                    exchange_id,
                 )
                 self._clients.append(client)
                 await client.load_markets()
